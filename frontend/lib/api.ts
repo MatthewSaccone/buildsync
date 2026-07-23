@@ -37,25 +37,26 @@ export type PinStatus = "open" | "in_progress" | "blocked" | "resolved" | "verif
 export interface User {
   id: number;
   email: string;
-  full_name?: string;
-  company_name?: string;
-  role?: UserRole;
-  phone?: string;
+  full_name: string;
+  company_name: string | null;
+  role: UserRole;
+  phone: string | null;
 }
 
 export interface Project {
-  id: number | string;
+  id: number;
   name: string;
-  description?: string;
-  address?: string;
-  status?: string;
-  created_at?: string;
+  address: string | null;
+  created_by_id: number;
+  created_at: string;
 }
 
 export interface Notification {
   id: number;
-  title?: string;
+  type: string;
   message: string;
+  project_id: number | null;
+  pin_id: number | null;
   read: boolean;
   created_at: string;
 }
@@ -63,45 +64,45 @@ export interface Notification {
 export interface MaterialVariant {
   id: number;
   material_id: number;
-  name: string;
-  unit?: string;
-  price?: number;
-  sku?: string;
+  size: string;
+  unit: string | null;
+  price: number;
+  sku: string | null;
+  updated_at: string;
 }
 
 export interface Material {
   id: number;
   name: string;
-  category?: string;
-  unit?: string;
-  price?: number;
-  description?: string;
-  variants?: MaterialVariant[];
+  category: string | null;
+  notes: string | null;
+  created_by_id: number;
+  created_at: string;
+  variants: MaterialVariant[];
 }
 
-export interface CostItem {
-  id?: number | string;
-  name: string;
-  category?: string;
-  quantity?: number;
-  unit_price?: number;
-  total_price: number;
-  [key: string]: any;
+export interface MaterialCostLine {
+  material_variant_id: number;
+  material_name: string;
+  material_category: string | null;
+  size: string;
+  unit: string | null;
+  total_quantity: number;
+  unit_price: number;
+  total_cost: number;
 }
 
 export interface ProjectCostSummary {
+  project_id: number;
+  lines: MaterialCostLine[];
   total_cost: number;
-  breakdown_by_category?: Record<string, number>;
-  items?: CostItem[];
-  [key: string]: any;
 }
 
 export interface ProjectMember {
-  id: number | string;
-  user_id?: number | string;
-  project_id?: number | string;
+  id: number;
+  user_id: number;
   role: ProjectRole;
-  user?: User;
+  user: User;
 }
 
 export interface Sheet {
@@ -169,6 +170,11 @@ export interface SearchHit {
   snippet: string | null;
 }
 
+export interface SearchResults {
+  query: string;
+  results: SearchHit[];
+}
+
 export interface DashboardStats {
   total_sheets?: number;
   total_members?: number;
@@ -193,13 +199,34 @@ export interface Attachment {
   uploaded_at: string;
 }
 
+export interface OverduePin {
+  id: number;
+  sheet_id: number;
+  title: string;
+  status: PinStatus;
+  priority: string;
+  trade: UserRole | null;
+  days_open: number;
+}
+
+export interface ActivityItem {
+  kind: string;
+  message: string;
+  pin_id: number;
+  pin_title: string;
+  sheet_id: number;
+  actor_name: string;
+  created_at: string;
+}
+
 export interface DashboardData {
-  project: Project;
-  stats?: DashboardStats;
-  recent_sheets?: Sheet[];
-  recent_members?: ProjectMember[];
-  pin_summary?: Record<PinStatus, number>;
-  [key: string]: any;
+  project_id: number;
+  total_pins: number;
+  by_status: Record<string, number>;
+  by_trade: Record<string, number>;
+  by_priority: Record<string, number>;
+  overdue: OverduePin[];
+  recent_activity: ActivityItem[];
 }
 
 // ==========================================
@@ -454,7 +481,7 @@ export async function listMembers(projectId: string | number): Promise<ProjectMe
 
 export async function addMember(
   projectId: string | number,
-  data: { userId: string | number; role: string }
+  data: { user_id: string | number; role?: string }
 ): Promise<ProjectMember> {
   const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/members`, {
     method: "POST",
@@ -486,8 +513,8 @@ export async function removeMember(
   });
 }
 
-export async function lookupUser(query: string): Promise<User[]> {
-  const res = await fetchWithAuth(`${API_URL}/users/search?q=${encodeURIComponent(query)}`);
+export async function lookupUser(email: string): Promise<User> {
+  const res = await fetchWithAuth(`${API_URL}/auth/lookup?email=${encodeURIComponent(email)}`);
   return res.json();
 }
 
@@ -495,14 +522,24 @@ export async function lookupUser(query: string): Promise<User[]> {
 // Costs & Materials Export API
 // ==========================================
 
-export async function getProjectCostSummary(projectId: string | number): Promise<ProjectCostSummary> {
-  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/costs`);
+export async function getProjectCostSummary(
+  projectId: string | number,
+  status?: PinStatus
+): Promise<ProjectCostSummary> {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  const qs = params.toString();
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/materials-cost${qs ? `?${qs}` : ""}`);
   return res.json();
 }
 
-export function materialsCsvExportUrl(projectId: string | number): string {
-  const token = getToken();
-  return `${API_URL}/projects/${projectId}/materials/export.csv${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+/** Builds the export URL only — the caller is responsible for attaching the
+ * Authorization header (the backend requires it; a bare <a href> won't work). */
+export function materialsCsvExportUrl(projectId: string | number, status?: PinStatus): string {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  const qs = params.toString();
+  return `${API_URL}/projects/${projectId}/materials-cost/export${qs ? `?${qs}` : ""}`;
 }
 
 // ==========================================
@@ -651,7 +688,7 @@ export function sheetImageUrl(sheet: Sheet | string | number): string {
 export async function searchProject(
   projectId: string | number,
   query: string
-): Promise<SearchHit[]> {
+): Promise<SearchResults> {
   const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/search?q=${encodeURIComponent(query)}`);
   return res.json();
 }
@@ -660,14 +697,35 @@ export async function searchProject(
 // Materials API
 // ==========================================
 
-export async function listMaterials(): Promise<Material[]> {
-  const res = await fetchWithAuth(`${API_URL}/materials/`);
+export async function listMaterials(filters?: { q?: string; category?: string }): Promise<Material[]> {
+  const params = new URLSearchParams();
+  if (filters?.q) params.set("q", filters.q);
+  if (filters?.category) params.set("category", filters.category);
+  const qs = params.toString();
+  const res = await fetchWithAuth(`${API_URL}/materials${qs ? `?${qs}` : ""}`);
   return res.json();
 }
 
-export async function createMaterial(data: Partial<Material>): Promise<Material> {
-  const res = await fetchWithAuth(`${API_URL}/materials/`, {
+export async function createMaterial(data: {
+  name: string;
+  category?: string;
+  notes?: string;
+  variants?: { size: string; unit?: string; price: number; sku?: string }[];
+}): Promise<Material> {
+  const res = await fetchWithAuth(`${API_URL}/materials`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function updateMaterial(
+  materialId: number,
+  data: Partial<{ name: string; category: string; notes: string }>
+): Promise<Material> {
+  const res = await fetchWithAuth(`${API_URL}/materials/${materialId}`, {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
@@ -680,10 +738,12 @@ export async function deleteMaterial(id: number): Promise<void> {
   });
 }
 
+/** All three variant endpoints return the parent Material (with its full variants
+ * array), not the single variant — that's what the backend actually sends back. */
 export async function addMaterialVariant(
   materialId: number,
-  data: Partial<MaterialVariant>
-): Promise<MaterialVariant> {
+  data: { size: string; unit?: string; price: number; sku?: string }
+): Promise<Material> {
   const res = await fetchWithAuth(`${API_URL}/materials/${materialId}/variants`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -693,10 +753,11 @@ export async function addMaterialVariant(
 }
 
 export async function updateMaterialVariant(
+  materialId: number,
   variantId: number,
-  data: Partial<MaterialVariant>
-): Promise<MaterialVariant> {
-  const res = await fetchWithAuth(`${API_URL}/materials/variants/${variantId}`, {
+  data: Partial<{ size: string; unit: string; price: number; sku: string }>
+): Promise<Material> {
+  const res = await fetchWithAuth(`${API_URL}/materials/${materialId}/variants/${variantId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -704,10 +765,11 @@ export async function updateMaterialVariant(
   return res.json();
 }
 
-export async function deleteMaterialVariant(variantId: number): Promise<void> {
-  await fetchWithAuth(`${API_URL}/materials/variants/${variantId}`, {
+export async function deleteMaterialVariant(materialId: number, variantId: number): Promise<Material> {
+  const res = await fetchWithAuth(`${API_URL}/materials/${materialId}/variants/${variantId}`, {
     method: "DELETE",
   });
+  return res.json();
 }
 
 // ==========================================
@@ -715,19 +777,19 @@ export async function deleteMaterialVariant(variantId: number): Promise<void> {
 // ==========================================
 
 export async function listNotifications(): Promise<Notification[]> {
-  const res = await fetchWithAuth(`${API_URL}/notifications/`);
+  const res = await fetchWithAuth(`${API_URL}/notifications`);
   return res.json();
 }
 
 export async function markNotificationRead(id: number): Promise<void> {
   await fetchWithAuth(`${API_URL}/notifications/${id}/read`, {
-    method: "PATCH",
+    method: "POST",
   });
 }
 
 export async function markAllNotificationsRead(): Promise<void> {
   await fetchWithAuth(`${API_URL}/notifications/read-all`, {
-    method: "PATCH",
+    method: "POST",
   });
 }
 
