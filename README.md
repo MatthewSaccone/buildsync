@@ -44,29 +44,3 @@ For production, set `DATABASE_URL` in a `.env` file to a Postgres URL.
 8. `GET /sheets/{id}/pins?status=open&trade=electrician` → filter the punch
    list by trade or status — this is the "who owes what" view
 
-## What's NOT built yet (by design — this was a scaffold pass)
-
-- Frontend (Next.js recommended — pairs naturally with the pin/coordinate
-  model for rendering markers on an image)
-- Real-time updates (WebSockets or polling) so people see new pins/comments
-  live
-- Notifications (email/push) when you're assigned a pin or tagged in a
-  comment — this is probably the single highest-value feature for killing
-  the "back and forth" problem
-- File storage is local disk (`app/static/uploads`) — swap for S3/R2 before
-  production
-- Role-based permission nuance (right now: any project member can create
-  pins/comments; only owner/admin can add members)
-- Alembic migrations aren't initialized yet (tables are created via
-  `create_all` for dev convenience)
-
-## Suggested next step
-
-Pick one:
-- **Notifications** — this is what actually replaces "back and forth
-  messaging." Wire up email (or in-app) notifications on pin assignment and
-  new comments.
-- **Frontend** — a Next.js page that renders a sheet image with pins
-  overlaid, click-to-drop-a-pin, and a sidebar thread view.
-- **Real-time** — WebSocket channel per project so pin/comment updates show
-  up live for everyone on-site.
