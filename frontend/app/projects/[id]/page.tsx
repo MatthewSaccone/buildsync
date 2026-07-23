@@ -203,7 +203,7 @@ export default function ProjectDetailPage() {
   return (
     <div className="flex min-h-screen flex-col">
       <Topbar />
-      <main className="mx-auto w-full max-w-4xl flex-1 px-5 py-8">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-5 py-8">
         <Link href="/projects" className="label-mono mb-4 inline-block" style={{ color: "var(--amber)" }}>
           ← All projects
         </Link>
@@ -255,7 +255,7 @@ export default function ProjectDetailPage() {
                 <Link
                   key={`${hit.pin.id}-${hit.matched_on}`}
                   href={`/projects/${projectId}/sheets/${hit.sheet_id}?pin=${hit.pin.id}`}
-                  className="flex flex-col gap-1 px-4 py-3 transition-colors hover:bg-[var(--ink-3)]"
+                  className="flex flex-col gap-1 px-4 py-3 transition-colors hover:bg-[var(--surface-hover)]"
                   style={{ borderColor: "var(--line-soft)" }}
                 >
                   <div className="flex items-center justify-between">
@@ -289,7 +289,7 @@ export default function ProjectDetailPage() {
                       <Link
                         href={`/projects/${projectId}/sheets/${s.id}`}
                         className="flex h-20 w-28 flex-shrink-0 items-center justify-center overflow-hidden"
-                        style={{ background: "var(--ink)", border: "1px solid var(--line)" }}
+                        style={{ background: "var(--surface-raised)", border: "1px solid var(--line)" }}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
@@ -356,7 +356,7 @@ export default function ProjectDetailPage() {
                               onChange={(e) =>
                                 setVersionFileBySheet((prev) => ({ ...prev, [s.id]: e.target.files?.[0] ?? null }))
                               }
-                              className="flex-1 text-sm"
+                              className="field flex-1 text-sm"
                             />
                             <button
                               type="submit"
@@ -392,7 +392,7 @@ export default function ProjectDetailPage() {
                 type="file"
                 accept=".png,.jpg,.jpeg,.webp,.pdf"
                 onChange={(e) => setSheetFile(e.target.files?.[0] ?? null)}
-                className="text-sm"
+                className="field text-sm"
                 required
               />
               {uploadError && (
@@ -418,8 +418,8 @@ export default function ProjectDetailPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <select
-                      className="field"
-                      style={{ width: "auto", padding: "0.3rem 0.5rem" }}
+                      className="field text-sm"
+                      style={{ width: "auto" }}
                       value={m.role}
                       disabled={roleBusyId === m.id}
                       onChange={(e) => handleRoleChange(m.id, e.target.value as ProjectRole)}

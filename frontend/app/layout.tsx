@@ -4,19 +4,35 @@ import { AuthProvider } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "BuildSync",
-  description: "Location-anchored issue tracking for job sites",
+  description:
+    "Construction project coordination, sheet management, and issue tracking.",
 };
+
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+
   return (
     <html lang="en" className="h-full">
-      <body className="min-h-full flex flex-col">
-        <AuthProvider>{children}</AuthProvider>
+
+      <body
+        className="
+          min-h-screen
+          flex
+          flex-col
+          antialiased
+        "
+      >
+
+        <AuthProvider>
+          {children}
+        </AuthProvider>
+
       </body>
+
     </html>
   );
 }

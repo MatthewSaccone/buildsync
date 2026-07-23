@@ -22,8 +22,10 @@ export default function LoginPage() {
   const { refreshUser } = useAuth();
 
   const [isSignUp, setIsSignUp] = useState(false);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [role, setRole] = useState<UserRole>("general_contractor");
@@ -33,6 +35,7 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     setError("");
     setLoading(true);
 
@@ -46,9 +49,15 @@ export default function LoginPage() {
           role,
         });
 
-        await login({ email, password });
+        await login({
+          email,
+          password,
+        });
       } else {
-        await login({ email, password });
+        await login({
+          email,
+          password,
+        });
       }
 
       await refreshUser();
@@ -56,14 +65,21 @@ export default function LoginPage() {
     } catch (err: any) {
       if (err instanceof ApiError) {
         if (Array.isArray(err.detail)) {
-          const formattedError = err.detail
-            .map((item: any) => item.msg || JSON.stringify(item))
-            .join(", ");
-          setError(formattedError);
-        } else if (typeof err.detail === "object" && err.detail !== null) {
+          setError(
+            err.detail
+              .map((item: any) => item.msg || JSON.stringify(item))
+              .join(", ")
+          );
+        } else if (
+          typeof err.detail === "object" &&
+          err.detail !== null
+        ) {
           setError(err.detail.msg || JSON.stringify(err.detail));
         } else {
-          setError(err.detail || "An error occurred during authentication.");
+          setError(
+            err.detail ||
+              "An error occurred during authentication."
+          );
         }
       } else {
         setError(err.message || "Something went wrong.");
@@ -74,64 +90,116 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-      <div className="bg-white p-8 rounded-xl shadow-sm border max-w-md w-full">
-        <h1 className="text-2xl font-bold text-slate-900 mb-2">
-          {isSignUp ? "Create an Account" : "Welcome Back"}
-        </h1>
-        <p className="text-sm text-slate-500 mb-6">
-          {isSignUp
-            ? "Enter your details to register for BuildSync."
-            : "Sign in to access your project dashboard."}
-        </p>
+    <main className="flex min-h-screen items-center justify-center px-5">
+      <div className="panel w-full max-w-md p-6">
+
+        <div className="mb-6">
+          <p
+            className="label-mono mb-3"
+            style={{
+              color: "var(--amber)",
+            }}
+          >
+            BUILDSYNC
+          </p>
+
+          <h1
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: "1.8rem",
+            }}
+          >
+            {isSignUp
+              ? "Create an account"
+              : "Welcome back"}
+          </h1>
+
+          <p
+            className="mt-2 text-sm"
+            style={{
+              color: "var(--paper-dim)",
+            }}
+          >
+            {isSignUp
+              ? "Register to start managing projects."
+              : "Sign in to access your project dashboard."}
+          </p>
+        </div>
+
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-600 text-sm p-3 rounded-lg mb-4">
+          <div
+            className="mb-4 rounded-sm border px-3 py-2 text-sm"
+            style={{
+              borderColor: "var(--red)",
+              color: "var(--red)",
+              background: "var(--ink)",
+            }}
+          >
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col gap-3"
+        >
+
           {isSignUp && (
             <>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">
-                    First Name
+                  <label className="label-mono mb-1 block">
+                    First name
                   </label>
+
                   <input
-                    type="text"
+                    className="field"
                     required
                     value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    className="w-full border rounded-lg p-2 text-sm focus:ring-1 focus:ring-slate-400 focus:outline-none"
+                    onChange={(e) =>
+                      setFirstName(e.target.value)
+                    }
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">
-                    Last Name
+                  <label className="label-mono mb-1 block">
+                    Last name
                   </label>
+
                   <input
-                    type="text"
+                    className="field"
                     required
                     value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    className="w-full border rounded-lg p-2 text-sm focus:ring-1 focus:ring-slate-400 focus:outline-none"
+                    onChange={(e) =>
+                      setLastName(e.target.value)
+                    }
                   />
                 </div>
               </div>
 
+
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
+                <label className="label-mono mb-1 block">
                   Role
                 </label>
+
                 <select
+                  className="field"
                   value={role}
-                  onChange={(e) => setRole(e.target.value as UserRole)}
-                  className="w-full border rounded-lg p-2 text-sm bg-white focus:ring-1 focus:ring-slate-400 focus:outline-none"
+                  onChange={(e) =>
+                    setRole(
+                      e.target.value as UserRole
+                    )
+                  }
                 >
                   {ROLES.map((r) => (
-                    <option key={r.value} value={r.value}>
+                    <option
+                      key={r.value}
+                      value={r.value}
+                    >
                       {r.label}
                     </option>
                   ))}
@@ -140,79 +208,96 @@ export default function LoginPage() {
             </>
           )}
 
+
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">
-              Email Address
+            <label className="label-mono mb-1 block">
+              Email
             </label>
+
             <input
+              className="field"
               type="email"
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
               placeholder="name@company.com"
-              className="w-full border rounded-lg p-2 text-sm focus:ring-1 focus:ring-slate-400 focus:outline-none"
+              value={email}
+              onChange={(e) =>
+                setEmail(e.target.value)
+              }
             />
           </div>
 
+
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">
+            <label className="label-mono mb-1 block">
               Password
             </label>
+
             <input
+              className="field"
               type="password"
               required
               minLength={6}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border rounded-lg p-2 text-sm focus:ring-1 focus:ring-slate-400 focus:outline-none"
+              onChange={(e) =>
+                setPassword(e.target.value)
+              }
             />
           </div>
+
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-slate-900 text-white rounded-lg py-2.5 font-medium text-sm hover:bg-slate-800 disabled:opacity-50 transition-colors"
+            className="btn-primary mt-2 w-full"
           >
             {loading
-              ? "Please wait..."
+              ? "Please wait…"
               : isSignUp
-              ? "Create Account"
-              : "Sign In"}
+              ? "Create account"
+              : "Sign in"}
           </button>
+
         </form>
 
-        <div className="mt-6 text-center text-sm text-slate-600">
+
+        <div
+          className="mt-6 text-center text-sm"
+          style={{
+            color: "var(--paper-dim)",
+          }}
+        >
           {isSignUp ? (
-            <p>
+            <>
               Already have an account?{" "}
               <button
                 type="button"
+                className="hover:text-[var(--amber)] font-semibold hover:underline"
                 onClick={() => {
                   setIsSignUp(false);
                   setError("");
                 }}
-                className="font-semibold text-slate-900 hover:underline"
               >
                 Sign In
               </button>
-            </p>
+            </>
           ) : (
-            <p>
+            <>
               Don't have an account?{" "}
               <button
                 type="button"
+                className="hover:text-[var(--amber)] font-semibold hover:underline"
                 onClick={() => {
                   setIsSignUp(true);
                   setError("");
                 }}
-                className="font-semibold text-slate-900 hover:underline"
               >
                 Sign Up
               </button>
-            </p>
+            </>
           )}
         </div>
+
       </div>
-    </div>
+    </main>
   );
 }
