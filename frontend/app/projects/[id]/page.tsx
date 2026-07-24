@@ -6,6 +6,10 @@ import Link from "next/link";
 import Topbar from "@/components/Topbar";
 import PageLoader from "@/components/PageLoader";
 import ProjectTabs from "@/components/ProjectTabs";
+import DashboardPage from "./dashboard/page";
+import ProjectPinsPage from "./pins/page";
+import ProjectCostsPage from "./costs/page";
+import ProjectSheetsPage from "./sheets/page";
 import { useAuth } from "@/lib/auth";
 import {
   getProject,
@@ -35,6 +39,8 @@ export default function ProjectDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const projectId = Number(params.id);
+
+  const [activeTab, setActiveTab] = useState<"dashboard" | "sheets" | "pins" | "costs">("dashboard");
 
   const [project, setProject] = useState<Project | null>(null);
   const [members, setMembers] = useState<ProjectMember[]>([]);
@@ -216,7 +222,15 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        <ProjectTabs projectId={projectId} />
+        <ProjectTabs activeTab={activeTab} onChange={setActiveTab} />
+
+        {activeTab === "dashboard" && (<DashboardPage />)}
+
+        {activeTab === "sheets" && (<ProjectSheetsPage />)}
+
+        {activeTab === "pins" && (<ProjectPinsPage />)}
+
+        {activeTab === "costs" && (<ProjectCostsPage />)}
 
         {/* Search */}
         <form onSubmit={handleSearch} className="mb-6 flex items-center gap-2">

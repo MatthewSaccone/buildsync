@@ -2,14 +2,15 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { getToken, clearToken, apiLogout, getMe, type User } from "@/lib/api";
+import { getToken, clearToken, apiLogout, getMe, login, type User } from "@/lib/api";
 
-interface AuthContextType {
+export type AuthContextType = {
   user: User | null;
   loading: boolean;
-  logout: () => void;
   refreshUser: () => Promise<void>;
-}
+  login: (...args: any[]) => Promise<void>;
+  logout: () => void;
+};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -53,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

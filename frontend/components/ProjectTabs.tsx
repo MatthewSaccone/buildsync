@@ -1,65 +1,53 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+type Tab =
+  | "dashboard"
+  | "sheets"
+  | "pins"
+  | "costs";
+
+interface ProjectTabsProps {
+  activeTab: Tab;
+  onChange: (tab: Tab) => void;
+}
 
 export default function ProjectTabs({
-  projectId,
-}: {
-  projectId: number;
-}) {
-  const pathname = usePathname();
-
-  const tabs = [
-    {
-      href: `/projects/${projectId}`,
-      label: "Sheets",
-      exact: true,
-    },
-    {
-      href: `/projects/${projectId}/dashboard`,
-      label: "Dashboard",
-    },
-    {
-      href: `/projects/${projectId}/pins`,
-      label: "Pins",
-    },
-    {
-      href: `/projects/${projectId}/costs`,
-      label: "Costs",
-    },
+  activeTab,
+  onChange,
+}: ProjectTabsProps) {
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "dashboard", label: "Dashboard" },
+    { id: "sheets", label: "Sheets" },
+    { id: "pins", label: "Pins" },
+    { id: "costs", label: "Costs" },
   ];
 
   return (
     <div
-      className="mb-6 flex gap-1 overflow-x-auto border-b"
+      className="flex gap-1 mb-6"
       style={{
-        borderColor: "var(--line)",
+        borderBottom: "1px solid var(--line)",
       }}
     >
-      {tabs.map((tab) => {
-        const active = tab.exact
-          ? pathname === tab.href
-          : pathname?.startsWith(tab.href);
-
-        return (
-          <Link
-            key={tab.href}
-            href={tab.href}
-            className="label-mono px-3 py-2 transition-colors"
-            style={{
-              color: active
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          onClick={() => onChange(tab.id)}
+          className="px-4 py-2 text-sm"
+          style={{
+            color:
+              activeTab === tab.id
                 ? "var(--amber)"
                 : "var(--paper-dim)",
-              borderBottom: active
+            borderBottom:
+              activeTab === tab.id
                 ? "2px solid var(--amber)"
                 : "2px solid transparent",
-            }}
-          >
-            {tab.label}
-          </Link>
-        );
-      })}
+          }}
+        >
+          {tab.label}
+        </button>
+      ))}
     </div>
   );
 }

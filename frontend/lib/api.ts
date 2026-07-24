@@ -34,6 +34,8 @@ export type ProjectRole = "owner" | "admin" | "member" | "viewer" | string;
 
 export type PinStatus = "open" | "in_progress" | "blocked" | "resolved" | "verified" | string;
 
+export type PinPriority = | "low" | "normal" | "high" | "urgent" | string;
+
 export interface User {
   id: number;
   email: string;
@@ -879,4 +881,53 @@ export function connectNotificationSocket(
   };
 
   return ws;
+}
+
+// ==========================================
+// Pin Materials API
+// ==========================================
+
+export async function addPinMaterial(
+  pinId: number | string,
+  data: {
+    material_variant_id: number;
+    quantity: number;
+  }
+): Promise<PinMaterial> {
+  const res = await fetchWithAuth(`${API_URL}/pins/${pinId}/materials`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+
+  return res.json();
+}
+
+export async function updatePinMaterial(
+  pinId: number | string,
+  pinMaterialId: number | string,
+  quantity: number
+): Promise<PinMaterial> {
+  const res = await fetchWithAuth(
+    `${API_URL}/pins/${pinId}/materials/${pinMaterialId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ quantity }),
+    }
+  );
+
+  return res.json();
+}
+
+export async function removePinMaterial(
+  pinId: number | string,
+  pinMaterialId: number | string
+): Promise<void> {
+  await fetchWithAuth(
+    `${API_URL}/pins/${pinId}/materials/${pinMaterialId}`,
+    {
+      method: "DELETE",
+    }
+  );
 }

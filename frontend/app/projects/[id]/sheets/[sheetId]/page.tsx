@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Topbar from "@/components/Topbar";
 import PageLoader from "@/components/PageLoader";
+import StatusBadge from "@/components/StatusBadge";
 import { useAuth } from "@/lib/auth";
-import { AttachmentUploader } from "@/components/AttachmentUploader";
 import {
   listSheets,
   listPins,
@@ -16,24 +16,29 @@ import {
   listComments,
   addComment,
   listMembers,
+  listMaterials,
+  addPinMaterial,
+  updatePinMaterial,
+  removePinMaterial,
   connectProjectSocket,
   sheetImageUrl,
-  attachmentUrl,
   ApiError,
   type Sheet,
   type Pin,
   type PinStatus,
+  type PinPriority,
   type Comment,
   type ProjectMember,
   type UserRole,
+  type Material,
 } from "@/lib/api";
 
 const STATUS_COLOR: Record<PinStatus, string> = {
   open: "var(--blue)",
-  in_progress: "var(--amber)",
+  in_progress: "var(--gold)",
   blocked: "var(--red)",
   resolved: "var(--green)",
-  verified: "var(--green)",
+  verified: "var(--teal)",
 };
 
 const STATUS_LABEL: Record<PinStatus, string> = {
@@ -45,7 +50,7 @@ const STATUS_LABEL: Record<PinStatus, string> = {
 };
 
 const STATUSES: PinStatus[] = ["open", "in_progress", "blocked", "resolved", "verified"];
-const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
+const PRIORITIES: PinPriority[] = ["low", "normal", "high", "urgent"];
 const TRADES: UserRole[] = [
   "architect",
   "builder",
@@ -58,6 +63,20 @@ const TRADES: UserRole[] = [
   "other",
 ];
 
+const PRIORITY_SIZE: Record<PinPriority, number> = {
+  low: 18,
+  normal: 24,
+  high: 28,
+  urgent: 30,
+};
+
+const PRIORITY_PULSE: Record<PinPriority, boolean> = {
+  low: false,
+  normal: false,
+  high: false,
+  urgent: true,
+};
+
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const mins = Math.round(diffMs / 60000);
@@ -68,19 +87,22 @@ function timeAgo(iso: string): string {
   return `${Math.round(hrs / 24)}d ago`;
 }
 
+function formatPrice(price: number): string {
+  return price.toLocaleString(undefined, { style: "currency", currency: "USD" });
+}
+
 export default function SheetViewerPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const params = useParams<{ id: string; sheetId: string }>();
-  const searchParams = useSearchParams();
   const projectId = Number(params.id);
   const sheetId = Number(params.sheetId);
 
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [pins, setPins] = useState<Pin[]>([]);
   const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [catalog, setCatalog] = useState<Material[]>([]);
   const [fetching, setFetching] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<PinStatus | "all">("all");
   const [tradeFilter, setTradeFilter] = useState<UserRole | "all">("all");
@@ -88,7 +110,7 @@ export default function SheetViewerPage() {
   const [draftPos, setDraftPos] = useState<{ x: number; y: number } | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftTrade, setDraftTrade] = useState<UserRole | "">("");
-  const [draftPriority, setDraftPriority] = useState<string>("normal");
+  const [draftPriority, setDraftPriority] = useState<PinPriority>("normal");
   const [draftAssignee, setDraftAssignee] = useState<number | "">("");
   const [draftError, setDraftError] = useState<string | null>(null);
   const [draftBusy, setDraftBusy] = useState(false);
@@ -99,17 +121,7 @@ export default function SheetViewerPage() {
   const [commentBody, setCommentBody] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
 
-  const [editingDetails, setEditingDetails] = useState(false);
-  const [editTitle, setEditTitle] = useState("");
-  const [editTrade, setEditTrade] = useState<UserRole | "">("");
-  const [editBusy, setEditBusy] = useState(false);
-  const [deleteBusy, setDeleteBusy] = useState(false);
-
   const imgRef = useRef<HTMLDivElement>(null);
-  const selectedPinIdRef = useRef<number | null>(null);
-  useEffect(() => {
-    selectedPinIdRef.current = selectedPinId;
-  }, [selectedPinId]);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -117,43 +129,37 @@ export default function SheetViewerPage() {
 
   useEffect(() => {
     if (!user || !projectId || !sheetId) return;
-    setFetching(true);
-    setLoadError(null);
-    Promise.all([listSheets(projectId), listPins(sheetId), listMembers(projectId)])
-      .then(([sheets, pinList, memberList]) => {
-        const found = sheets.find((s) => s.id === sheetId) ?? null;
-        setSheet(found);
+    Promise.all([listSheets(projectId), listPins(sheetId), listMembers(projectId), listMaterials()])
+      .then(([sheets, pinList, memberList, materialList]) => {
+        setSheet(sheets.find((s) => s.id === sheetId) ?? null);
         setPins(pinList);
         setMembers(memberList);
-
-        // Deep link from dashboard/search/pins-table (?pin=123)
-        const pinParam = searchParams.get("pin");
-        if (pinParam) {
-          const target = pinList.find((p) => p.id === Number(pinParam));
-          if (target) setSelectedPinId(target.id);
-        }
+        setCatalog(materialList);
       })
-      .catch((err) => setLoadError(err instanceof ApiError ? err.message : "Couldn't load this sheet."))
       .finally(() => setFetching(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, projectId, sheetId]);
 
-  // Live updates over the project's websocket channel
+  // Live updates
   useEffect(() => {
     if (!user || !projectId) return;
     const ws = connectProjectSocket(projectId, (msg) => {
-      if (msg.event === "pin_created" && msg.pin?.sheet_id === sheetId) {
-        setPins((prev) => (prev.some((p) => p.id === msg.pin.id) ? prev : [...prev, msg.pin]));
+      if (msg.event === "pin_created" && msg.pin && msg.pin.sheet_id === sheetId) {
+        setPins((prev) => (prev.some((p) => p.id === msg.pin!.id) ? prev : [...prev, msg.pin!]));
       }
-      if (msg.event === "pin_updated" && msg.pin?.sheet_id === sheetId) {
-        setPins((prev) => prev.map((p) => (p.id === msg.pin.id ? msg.pin : p)));
+      if (msg.event === "pin_updated" && msg.pin && msg.pin.sheet_id === sheetId) {
+        setPins((prev) => prev.map((p) => (p.id === msg.pin!.id ? msg.pin! : p)));
       }
-      if (msg.event === "pin_deleted" && msg.sheet_id === sheetId) {
+      if (msg.event === "pin_deleted" && msg.pin_id) {
         setPins((prev) => prev.filter((p) => p.id !== msg.pin_id));
-        if (selectedPinIdRef.current === msg.pin_id) setSelectedPinId(null);
+        setSelectedPinId((prev) => (prev === msg.pin_id ? null : prev));
       }
-      if (msg.event === "comment_created" && msg.comment?.pin_id === selectedPinIdRef.current) {
-        setComments((prev) => (prev.some((c) => c.id === msg.comment.id) ? prev : [...prev, msg.comment]));
+      if (msg.event === "comment_created" && msg.comment) {
+        setComments((prev) => {
+          if (prev.length === 0) return prev; // not viewing a thread
+          if (prev[0].pin_id !== msg.comment!.pin_id) return prev;
+          if (prev.some((c) => c.id === msg.comment!.id)) return prev;
+          return [...prev, msg.comment!];
+        });
       }
     });
     return () => ws?.close();
@@ -202,14 +208,14 @@ export default function SheetViewerPage() {
 
   async function handleCreatePin(e: React.FormEvent) {
     e.preventDefault();
-    if (!draftPos || !draftTitle.trim()) return;
+    if (!draftPos) return;
     setDraftBusy(true);
     setDraftError(null);
     try {
       const pin = await createPin(sheetId, {
         x: draftPos.x,
         y: draftPos.y,
-        title: draftTitle.trim(),
+        title: draftTitle,
         trade: draftTrade || null,
         priority: draftPriority,
         assigned_to_id: draftAssignee || null,
@@ -236,6 +242,11 @@ export default function SheetViewerPage() {
     setPins((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
   }
 
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editTrade, setEditTrade] = useState<UserRole | "">("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
   function startEditingDetails() {
     if (!selectedPin) return;
     setEditTitle(selectedPin.title);
@@ -243,25 +254,19 @@ export default function SheetViewerPage() {
     setEditingDetails(true);
   }
 
-  async function handleSaveDetails(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSaveDetails() {
     if (!selectedPin || !editTitle.trim()) return;
-    setEditBusy(true);
-    try {
-      const updated = await updatePin(sheetId, selectedPin.id, {
-        title: editTitle.trim(),
-        trade: editTrade || null,
-      });
-      setPins((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-      setEditingDetails(false);
-    } finally {
-      setEditBusy(false);
-    }
+    const updated = await updatePin(sheetId, selectedPin.id, {
+      title: editTitle.trim(),
+      trade: editTrade || null,
+    });
+    setPins((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    setEditingDetails(false);
   }
 
   async function handleDeletePin() {
     if (!selectedPin) return;
-    if (!window.confirm(`Delete pin #${selectedPin.id} — "${selectedPin.title}"? This can't be undone.`)) return;
+    if (!confirm(`Delete pin "${selectedPin.title}"? This can't be undone.`)) return;
     setDeleteBusy(true);
     try {
       await deletePin(sheetId, selectedPin.id);
@@ -285,21 +290,60 @@ export default function SheetViewerPage() {
     }
   }
 
-  function handleAttachmentUploaded(attachment: any) {
+  const [materialPickId, setMaterialPickId] = useState<number | "">("");
+  const [materialQty, setMaterialQty] = useState("1");
+  const [materialBusy, setMaterialBusy] = useState(false);
+
+  const allVariants = useMemo(
+    () =>
+      catalog.flatMap((m) =>
+        m.variants.map((v) => ({
+          variantId: v.id,
+          label: `${m.name} — ${v.size}${v.unit ? ` (${v.unit})` : ""} · ${formatPrice(v.price)}`,
+        }))
+      ),
+    [catalog]
+  );
+
+  async function handleAddMaterial(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedPin || !materialPickId) return;
+    const qty = parseFloat(materialQty);
+    if (isNaN(qty) || qty <= 0) return;
+    setMaterialBusy(true);
+    try {
+      await addPinMaterial(selectedPin.id, { material_variant_id: Number(materialPickId), quantity: qty });
+      const refreshed = await listPins(sheetId);
+      setPins(refreshed);
+      setMaterialPickId("");
+      setMaterialQty("1");
+    } finally {
+      setMaterialBusy(false);
+    }
+  }
+
+  async function handleMaterialQtyChange(pinMaterialId: number, quantity: number) {
+    if (!selectedPin || isNaN(quantity) || quantity <= 0) return;
+    await updatePinMaterial(selectedPin.id, pinMaterialId, quantity);
+    const refreshed = await listPins(sheetId);
+    setPins(refreshed);
+  }
+
+  async function handleRemoveMaterial(pinMaterialId: number) {
     if (!selectedPin) return;
-    setPins((prev) =>
-      prev.map((p) => (p.id === selectedPin.id ? { ...p, attachments: [...p.attachments, attachment] } : p))
-    );
+    await removePinMaterial(selectedPin.id, pinMaterialId);
+    const refreshed = await listPins(sheetId);
+    setPins(refreshed);
   }
 
   if (loading || !user || fetching) return <PageLoader />;
 
-  if (loadError || !sheet) {
+  if (!sheet) {
     return (
       <div className="flex min-h-screen flex-col">
         <Topbar />
         <main className="flex flex-1 items-center justify-center">
-          <p style={{ color: "var(--paper-dim)" }}>{loadError || "Sheet not found."}</p>
+          <p style={{ color: "var(--paper-dim)" }}>Sheet not found.</p>
         </main>
       </div>
     );
@@ -331,7 +375,7 @@ export default function SheetViewerPage() {
       </div>
       <div>
         <label className="label-mono mb-1 block">Priority</label>
-        <select className="field" value={draftPriority} onChange={(e) => setDraftPriority(e.target.value)}>
+        <select className="field" value={draftPriority} onChange={(e) => setDraftPriority(e.target.value as PinPriority)}>
           {PRIORITIES.map((p) => (
             <option key={p} value={p}>
               {p}
@@ -349,7 +393,7 @@ export default function SheetViewerPage() {
           <option value="">Unassigned</option>
           {members.map((m) => (
             <option key={m.user_id} value={m.user_id}>
-              {m.user?.full_name}
+              {m.user.full_name}
             </option>
           ))}
         </select>
@@ -373,17 +417,12 @@ export default function SheetViewerPage() {
       <div>
         <div className="mb-1 flex items-center justify-between">
           <span className="label-mono">Pin #{selectedPin.id}</span>
-          <span
-            className="rounded-sm px-2 py-0.5 text-xs font-semibold"
-            style={{ background: STATUS_COLOR[selectedPin.status], color: "#0b1521" }}
-          >
-            {STATUS_LABEL[selectedPin.status]}
-          </span>
+          <StatusBadge status={selectedPin.status} />
         </div>
 
         {editingDetails ? (
-          <form onSubmit={handleSaveDetails} className="flex flex-col gap-2">
-            <input className="field" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} autoFocus required />
+          <div className="flex flex-col gap-2">
+            <input className="field" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} autoFocus />
             <select className="field" value={editTrade} onChange={(e) => setEditTrade(e.target.value as UserRole | "")}>
               <option value="">Unspecified trade</option>
               {TRADES.map((t) => (
@@ -393,14 +432,14 @@ export default function SheetViewerPage() {
               ))}
             </select>
             <div className="flex gap-2">
-              <button type="submit" disabled={editBusy} className="btn-primary flex-1 text-sm">
-                {editBusy ? "Saving…" : "Save"}
+              <button onClick={handleSaveDetails} className="btn-primary text-sm">
+                Save
               </button>
-              <button type="button" onClick={() => setEditingDetails(false)} className="btn-ghost text-sm">
+              <button onClick={() => setEditingDetails(false)} className="btn-ghost text-sm">
                 Cancel
               </button>
             </div>
-          </form>
+          </div>
         ) : (
           <>
             <div className="flex items-start justify-between gap-2">
@@ -412,19 +451,17 @@ export default function SheetViewerPage() {
             <p className="label-mono mt-1">
               {selectedPin.priority} priority{selectedPin.trade ? ` · ${selectedPin.trade.replace(/_/g, " ")}` : ""}
             </p>
-            {selectedPin.total_cost > 0 && (
-              <p className="text-sm mt-1" style={{ color: "var(--amber)" }}>
-                {selectedPin.total_cost.toLocaleString(undefined, { style: "currency", currency: "USD" })} in
-                materials
-              </p>
-            )}
           </>
         )}
       </div>
 
       <div>
         <label className="label-mono mb-1 block">Status</label>
-        <select className="field" value={selectedPin.status} onChange={(e) => handleStatusChange(e.target.value as PinStatus)}>
+        <select
+          className="field"
+          value={selectedPin.status}
+          onChange={(e) => handleStatusChange(e.target.value as PinStatus)}
+        >
           {STATUSES.map((s) => (
             <option key={s} value={s}>
               {STATUS_LABEL[s]}
@@ -443,7 +480,7 @@ export default function SheetViewerPage() {
           <option value="">Unassigned</option>
           {members.map((m) => (
             <option key={m.user_id} value={m.user_id}>
-              {m.user?.full_name}
+              {m.user.full_name}
             </option>
           ))}
         </select>
@@ -451,26 +488,77 @@ export default function SheetViewerPage() {
 
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <span className="label-mono">Photos</span>
+          <span className="label-mono">Materials</span>
+          {selectedPin.materials.length > 0 && (
+            <span className="text-sm font-medium" style={{ color: "var(--amber)" }}>
+              {formatPrice(selectedPin.total_cost)}
+            </span>
+          )}
         </div>
-        {selectedPin.attachments.length > 0 && (
-          <div className="mb-2 grid grid-cols-3 gap-2">
-            {selectedPin.attachments.map((att) => (
-              <a
-                key={att.id}
-                href={attachmentUrl(att)}
-                target="_blank"
-                rel="noreferrer"
-                className="block aspect-square overflow-hidden rounded-sm border"
-                style={{ borderColor: "var(--line)" }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={attachmentUrl(att)} alt="" className="h-full w-full object-cover" />
-              </a>
+        <div className="flex flex-col gap-2">
+          {selectedPin.materials.length === 0 && (
+            <p className="text-sm" style={{ color: "var(--paper-dim)" }}>
+              No materials attached yet.
+            </p>
+          )}
+          {selectedPin.materials.map((pm) => (
+            <div key={pm.id} className="flex items-center justify-between gap-2 rounded-sm px-3 py-2" style={{ background: "var(--ink)" }}>
+              <div className="flex-1">
+                <p className="text-sm">{pm.material_name}</p>
+                <p className="label-mono">
+                  {pm.size}
+                  {pm.unit ? ` · ${pm.unit}` : ""} · {formatPrice(pm.unit_price)} each
+                </p>
+              </div>
+              <input
+                className="field"
+                style={{ width: 56 }}
+                type="number"
+                min="0.01"
+                step="0.01"
+                defaultValue={pm.quantity}
+                onBlur={(e) => handleMaterialQtyChange(pm.id, parseFloat(e.target.value))}
+              />
+              <span className="text-sm font-medium" style={{ width: 70, textAlign: "right" }}>
+                {formatPrice(pm.line_total)}
+              </span>
+              <button onClick={() => handleRemoveMaterial(pm.id)} className="label-mono" style={{ color: "var(--red)" }}>
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+        <form onSubmit={handleAddMaterial} className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <select
+            className="field"
+            value={materialPickId}
+            onChange={(e) => setMaterialPickId(e.target.value ? Number(e.target.value) : "")}
+          >
+            <option value="">Add a material…</option>
+            {allVariants.map((v) => (
+              <option key={v.variantId} value={v.variantId}>
+                {v.label}
+              </option>
             ))}
-          </div>
+          </select>
+          <input
+            className="field"
+            style={{ width: 72 }}
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={materialQty}
+            onChange={(e) => setMaterialQty(e.target.value)}
+          />
+          <button type="submit" disabled={materialBusy || !materialPickId} className="btn-ghost">
+            {materialBusy ? "…" : "Add"}
+          </button>
+        </form>
+        {catalog.length === 0 && (
+          <p className="mt-2 text-sm" style={{ color: "var(--paper-dim)" }}>
+            No materials in your catalog yet — add some from the Materials tab.
+          </p>
         )}
-        <AttachmentUploader pinId={selectedPin.id} onUploaded={handleAttachmentUploaded} />
       </div>
 
       <div>
@@ -497,16 +585,6 @@ export default function SheetViewerPage() {
                 <p className="text-sm" style={{ color: "var(--paper)" }}>
                   {c.body}
                 </p>
-                {c.attachments.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {c.attachments.map((att) => (
-                      <a key={att.id} href={attachmentUrl(att)} target="_blank" rel="noreferrer" className="block h-14 w-14 overflow-hidden rounded-sm border" style={{ borderColor: "var(--line)" }}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={attachmentUrl(att)} alt="" className="h-full w-full object-cover" />
-                      </a>
-                    ))}
-                  </div>
-                )}
               </div>
             ))
           )}
@@ -525,11 +603,14 @@ export default function SheetViewerPage() {
         </form>
       </div>
 
-      <div style={{ borderTop: "1px solid var(--line-soft)", paddingTop: "0.75rem" }}>
-        <button onClick={handleDeletePin} disabled={deleteBusy} className="label-mono" style={{ color: "var(--red)" }}>
-          {deleteBusy ? "Deleting…" : "Delete this pin"}
-        </button>
-      </div>
+      <button
+        onClick={handleDeletePin}
+        disabled={deleteBusy}
+        className="label-mono self-start"
+        style={{ color: "var(--red)" }}
+      >
+        {deleteBusy ? "Deleting…" : "Delete this pin"}
+      </button>
     </div>
   ) : (
     <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
@@ -556,7 +637,12 @@ export default function SheetViewerPage() {
           </h1>
         </div>
         <div className="flex items-center gap-2">
-          <select className="field" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as PinStatus | "all")} style={{ width: "auto" }}>
+          <select
+            className="field"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as PinStatus | "all")}
+            style={{ width: "auto" }}
+          >
             <option value="all">All statuses</option>
             {STATUSES.map((s) => (
               <option key={s} value={s}>
@@ -564,7 +650,12 @@ export default function SheetViewerPage() {
               </option>
             ))}
           </select>
-          <select className="field" value={tradeFilter} onChange={(e) => setTradeFilter(e.target.value as UserRole | "all")} style={{ width: "auto" }}>
+          <select
+            className="field"
+            value={tradeFilter}
+            onChange={(e) => setTradeFilter(e.target.value as UserRole | "all")}
+            style={{ width: "auto" }}
+          >
             <option value="all">All trades</option>
             {TRADES.map((t) => (
               <option key={t} value={t}>
@@ -576,58 +667,98 @@ export default function SheetViewerPage() {
       </div>
 
       <div className="flex flex-1" style={{ minHeight: 0 }}>
+        {/* Sheet canvas */}
         <div className="relative flex-1 overflow-auto p-4 sm:p-6" style={{ background: "var(--ink)" }}>
           <p className="label-mono mb-3 text-center md:hidden">Tap the plan to drop a pin</p>
-          <div ref={imgRef} onClick={handleImageClick} className="crosshair-cursor relative mx-auto" style={{ maxWidth: 1100, border: "1px solid var(--line)" }}>
+          <div
+            ref={imgRef}
+            onClick={handleImageClick}
+            className="crosshair-cursor relative mx-auto"
+            style={{ maxWidth: 1100, border: "1px solid var(--line)" }}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={sheetImageUrl(sheet)} alt={sheet.title} className="block w-full select-none" draggable={false} />
 
-            {filteredPins.map((p) => (
-              <button
-                key={p.id}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDraftPos(null);
-                  setSelectedPinId(p.id);
-                }}
-                className={`pin-marker absolute flex h-6 w-6 -translate-x-1/2 -translate-y-full items-center justify-center rounded-full border-2 ${
-                  p.priority === "urgent" ? "pulse" : ""
-                }`}
-                style={{
-                  left: `${p.x * 100}%`,
-                  top: `${p.y * 100}%`,
-                  background: STATUS_COLOR[p.status],
-                  borderColor: selectedPinId === p.id ? "var(--paper)" : "rgba(11,21,33,0.5)",
-                }}
-                title={`${p.title} · ${p.priority} priority`}
-              >
-                <span style={{ fontSize: 10, fontWeight: 700, color: "#0b1521" }}>{p.id}</span>
-              </button>
-            ))}
+            {filteredPins.map((p) => {
+              const size = PRIORITY_SIZE[p.priority];
+              const showFlag = p.priority === "high" || p.priority === "urgent";
+              return (
+                <button
+                  key={p.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDraftPos(null);
+                    setSelectedPinId(p.id);
+                  }}
+                  className={`pin-marker absolute flex -translate-x-1/2 -translate-y-full items-center justify-center rounded-full border-2 ${
+                    PRIORITY_PULSE[p.priority] ? "pulse" : ""
+                  }`}
+                  style={{
+                    left: `${p.x * 100}%`,
+                    top: `${p.y * 100}%`,
+                    width: size,
+                    height: size,
+                    background: STATUS_COLOR[p.status],
+                    borderColor: selectedPinId === p.id ? "var(--paper)" : "rgba(28,27,25,0.35)",
+                  }}
+                  title={`${p.title} · ${STATUS_LABEL[p.status]} · ${p.priority} priority`}
+                >
+                  {showFlag && (
+                    <span
+                      className="absolute -right-0.5 -top-0.5 flex h-3 w-3 items-center justify-center rounded-full"
+                      style={{ background: "var(--red)", fontSize: 8, color: "#fff", lineHeight: 1 }}
+                    >
+                      !
+                    </span>
+                  )}
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "#fff" }}>{p.id}</span>
+                </button>
+              );
+            })}
 
             {draftPos && (
               <div
                 className="pin-marker absolute flex h-6 w-6 -translate-x-1/2 -translate-y-full items-center justify-center rounded-full border-2"
                 style={{ left: `${draftPos.x * 100}%`, top: `${draftPos.y * 100}%`, background: "var(--amber)", borderColor: "var(--paper)" }}
               >
-                <span style={{ fontSize: 10, fontWeight: 700, color: "#241705" }}>+</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#fff" }}>+</span>
               </div>
             )}
           </div>
         </div>
 
-        <aside className="hidden w-96 shrink-0 overflow-y-auto p-5 md:block" style={{ borderLeft: "1px solid var(--line)", background: "var(--ink-2)" }}>
+        {/* Desktop side panel */}
+        <aside
+          className="hidden w-96 shrink-0 overflow-y-auto p-5 md:block"
+          style={{ borderLeft: "1px solid var(--line)", background: "var(--ink-2)" }}
+        >
           {panelBody}
         </aside>
       </div>
 
+      {/* Mobile bottom drawer */}
       {showPanel && (
         <div className="fixed inset-0 z-40 md:hidden">
-          <div className="absolute inset-0" style={{ background: "rgba(11,21,33,0.6)" }} onClick={closePanel} />
-          <div className="absolute inset-x-0 bottom-0 flex max-h-[80vh] flex-col overflow-y-auto rounded-t-lg p-5" style={{ background: "var(--ink-2)", borderTop: "1px solid var(--line)" }}>
+          <div
+            className="absolute inset-0"
+            style={{ background: "rgba(28,27,25,0.5)" }}
+            onClick={closePanel}
+          />
+          <div
+            className="absolute inset-x-0 bottom-0 flex max-h-[80vh] flex-col overflow-y-auto rounded-t-lg p-5"
+            style={{ background: "var(--ink-2)", borderTop: "1px solid var(--line)" }}
+          >
             <div className="mb-3 flex items-center justify-between">
-              <span className="mx-auto h-1 w-10 rounded-full" style={{ background: "var(--line)" }} />
-              <button onClick={closePanel} className="label-mono absolute right-5 top-5" style={{ color: "var(--paper-dim)" }} aria-label="Close">
+              <span
+                className="mx-auto h-1 w-10 rounded-full"
+                style={{ background: "var(--line)" }}
+              />
+              <button
+                onClick={closePanel}
+                className="label-mono absolute right-5 top-5"
+                style={{ color: "var(--paper-dim)" }}
+                aria-label="Close"
+              >
                 Close
               </button>
             </div>
