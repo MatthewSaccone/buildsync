@@ -9,6 +9,7 @@ from app.models.project import ProjectMember
 from app.models.user import User
 from app.schemas.schemas import CommentCreate, CommentOut
 from app.services.connection_manager import manager
+from app.services.mentions import parse_mentioned_users
 from app.services.notification_service import notify
 
 router = APIRouter(prefix="/pins/{pin_id}/comments", tags=["comments"])
@@ -55,6 +56,19 @@ async def add_comment(
             user_id=uid,
             type="comment",
             message=f"{user.full_name} commented on \"{pin.title}\"",
+            project_id=project_id,
+            pin_id=pin.id,
+        )
+
+    mentioned = parse_mentioned_users(payload.body, project_id, db)
+    for mentioned_user in mentioned:
+        if mentioned_user.id == user.id or mentioned_user.id in interested:
+            continue
+        await notify(
+            db,
+            user_id=mentioned_user.id,
+            type="mention",
+            message=f"{user.full_name} mentioned you on \"{pin.title}\"",
             project_id=project_id,
             pin_id=pin.id,
         )

@@ -9,6 +9,7 @@ from app.models.pin_material import PinMaterial
 from app.models.refresh_token import RefreshToken
 from app.models.password_reset_token import PasswordResetToken
 from app.models.attachment import Attachment
+from app.models.message import DirectMessage
 
 __all__ = [
     "User",
@@ -24,4 +25,5 @@ __all__ = [
     "RefreshToken",
     "PasswordResetToken",
     "Attachment",
+    "DirectMessage",
 ]

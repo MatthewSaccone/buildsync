@@ -10,6 +10,7 @@ import DashboardPage from "./dashboard/page";
 import ProjectPinsPage from "./pins/page";
 import ProjectCostsPage from "./costs/page";
 import ProjectSheetsPage from "./sheets/page";
+import ProjectChatPage from "./chat/page";
 import { useAuth } from "@/lib/auth";
 import {
   getProject,
@@ -40,7 +41,7 @@ export default function ProjectDetailPage() {
   const params = useParams<{ id: string }>();
   const projectId = Number(params.id);
 
-  const [activeTab, setActiveTab] = useState<"dashboard" | "sheets" | "pins" | "costs">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "sheets" | "pins" | "costs" | "chat">("dashboard");
 
   const [project, setProject] = useState<Project | null>(null);
   const [members, setMembers] = useState<ProjectMember[]>([]);
@@ -231,6 +232,8 @@ export default function ProjectDetailPage() {
         {activeTab === "pins" && (<ProjectPinsPage />)}
 
         {activeTab === "costs" && (<ProjectCostsPage />)}
+
+        {activeTab === "chat" && (<ProjectChatPage />)}
 
         {/* Search */}
         <form onSubmit={handleSearch} className="mb-6 flex items-center gap-2">

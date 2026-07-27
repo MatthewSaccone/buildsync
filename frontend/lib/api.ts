@@ -476,6 +476,49 @@ export async function getDashboard(projectId: string | number): Promise<Dashboar
   return res.json();
 }
 
+export interface DirectMessage {
+  id: number;
+  project_id: number;
+  sender_id: number;
+  recipient_id: number;
+  body: string;
+  created_at: string;
+  read_at: string | null;
+  sender: User;
+}
+
+export interface Conversation {
+  user: User;
+  last_message: DirectMessage | null;
+  unread_count: number;
+}
+
+export async function listConversations(projectId: string | number): Promise<Conversation[]> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/conversations`);
+  return res.json();
+}
+
+export async function getMessageThread(
+  projectId: string | number,
+  otherUserId: string | number
+): Promise<DirectMessage[]> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/messages/${otherUserId}`);
+  return res.json();
+}
+
+export async function sendMessage(
+  projectId: string | number,
+  otherUserId: string | number,
+  body: string
+): Promise<DirectMessage> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/messages/${otherUserId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+  return res.json();
+}
+
 export async function listMembers(projectId: string | number): Promise<ProjectMember[]> {
   const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/members`);
   return res.json();
