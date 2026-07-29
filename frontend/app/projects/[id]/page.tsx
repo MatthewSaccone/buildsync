@@ -151,65 +151,6 @@ export default function ProjectDetailPage() {
 
         {activeTab === "chat" && (<ProjectChatPage />)}
 
-        {/* Search */}
-        {activeTab === "pins" && (
-          <>
-            <form onSubmit={handleSearch} className="mb-6 flex items-center gap-2">
-              <input
-                className="field flex-1"
-                placeholder="Search pins by title or comment…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <button type="submit" disabled={searching} className="btn-ghost text-sm">
-                {searching ? "Searching…" : "Search"}
-              </button>
-              {searchResults !== null && (
-                <button
-                  type="button"
-                  className="label-mono"
-                  style={{ color: "var(--paper-dim)" }}
-                  onClick={() => {
-                    setSearchResults(null);
-                    setQuery("");
-                  }}
-                >
-                  Clear
-                </button>
-              )}
-            </form>
-
-            {searchResults !== null && (
-              <div className="panel mb-8 flex flex-col divide-y" style={{ borderColor: "var(--line)" }}>
-                {searchResults.length === 0 ? (
-                  <p className="px-4 py-6 text-center text-sm" style={{ color: "var(--paper-dim)" }}>
-                    No pins match “{query}”.
-                  </p>
-                ) : (
-                  searchResults.map((hit) => (
-                    <Link
-                      key={`${hit.pin.id}-${hit.matched_on}`}
-                      href={`/projects/${projectId}/sheets/${hit.sheet_id}?pin=${hit.pin.id}`}
-                      className="flex flex-col gap-1 px-4 py-3 transition-colors hover:bg-[var(--surface-hover)]"
-                      style={{ borderColor: "var(--line-soft)" }}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">{hit.pin.title}</span>
-                        <span className="label-mono">{hit.matched_on === "title" ? "Title match" : "Comment match"}</span>
-                      </div>
-                      {hit.snippet && (
-                        <p className="text-sm" style={{ color: "var(--paper-dim)" }}>
-                          {hit.snippet}
-                        </p>
-                      )}
-                    </Link>
-                  ))
-                )}
-              </div>
-            )}
-          </>
-        )}
-
         <div className="max-w-[320px]">
           {/* Members */}
           <section>
