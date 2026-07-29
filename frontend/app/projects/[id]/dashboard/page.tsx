@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import Topbar from "@/components/Topbar";
 import PageLoader from "@/components/PageLoader";
 import { useAuth } from "@/lib/auth";
 import { getProject, getDashboard, type Project, type DashboardData } from "@/lib/api";
@@ -66,19 +65,7 @@ export default function DashboardPage() {
   if (loading || !user || fetching || !project || !dashboard) return <PageLoader />;
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <Topbar />
-      <main className="mx-auto w-full max-w-4xl flex-1 px-5 py-8">
-        <Link href={`/projects/${projectId}`} className="label-mono mb-4 inline-block" style={{ color: "var(--amber)" }}>
-          ← Back to project
-        </Link>
-        <h1 className="mb-1" style={{ fontFamily: "var(--font-display)", fontSize: "1.6rem" }}>
-          Dashboard
-        </h1>
-        <p className="label-mono mb-6">
-          {project.name} · {dashboard.total_pins} pin{dashboard.total_pins === 1 ? "" : "s"} total
-        </p>
-
+    <div>
         <div className="grid gap-6 md:grid-cols-2">
           <div className="panel flex flex-col gap-3 p-5">
             <span className="label-mono">By status</span>
@@ -159,7 +146,6 @@ export default function DashboardPage() {
             ))
           )}
         </div>
-      </main>
     </div>
   );
 }

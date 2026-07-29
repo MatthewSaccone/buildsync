@@ -13,7 +13,7 @@ const TAB_LABELS: Record<TabKey, string> = {
   chat: "Chat",
 };
 
-const TAB_ORDER: TabKey[] = ["sheets", "dashboard", "pins", "costs", "chat"];
+const TAB_ORDER: TabKey[] = ["dashboard", "sheets", "pins", "costs", "chat"];
 
 interface ProjectTabsProps {
   projectId?: number;
@@ -57,8 +57,8 @@ export default function ProjectTabs({ projectId, activeTab, onChange }: ProjectT
   if (projectId === undefined) return null;
 
   const tabs = [
-    { href: `/projects/${projectId}`, label: TAB_LABELS.sheets, exact: true },
     { href: `/projects/${projectId}/dashboard`, label: TAB_LABELS.dashboard },
+    { href: `/projects/${projectId}`, label: TAB_LABELS.sheets, exact: true },
     { href: `/projects/${projectId}/pins`, label: TAB_LABELS.pins },
     { href: `/projects/${projectId}/costs`, label: TAB_LABELS.costs },
     { href: `/projects/${projectId}/chat`, label: TAB_LABELS.chat },

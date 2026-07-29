@@ -165,3 +165,26 @@ async def send_message(
         )
 
     return message
+
+
+@router.delete("/messages/{other_user_id}", status_code=204)
+def delete_thread(
+    project_id: int,
+    other_user_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Deletes the entire message thread between the current user and
+    other_user_id within this project. Either participant can clear it."""
+    _require_membership(db, project_id, user.id)
+    _require_membership(db, project_id, other_user_id)
+
+    db.query(DirectMessage).filter(
+        DirectMessage.project_id == project_id,
+        or_(
+            and_(DirectMessage.sender_id == user.id, DirectMessage.recipient_id == other_user_id),
+            and_(DirectMessage.sender_id == other_user_id, DirectMessage.recipient_id == user.id),
+        ),
+    ).delete(synchronize_session=False)
+    db.commit()
+    

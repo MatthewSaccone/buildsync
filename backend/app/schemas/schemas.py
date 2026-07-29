@@ -234,6 +234,34 @@ class CommentOut(BaseModel):
         from_attributes = True
 
 
+# ---- Messages ----
+class MessageCreate(BaseModel):
+    body: str
+
+
+class DirectMessageOut(BaseModel):
+    id: int
+    project_id: int
+    sender_id: int
+    recipient_id: int | None
+    body: str
+    created_at: datetime
+    read_at: datetime | None
+    sender: UserOut
+
+    class Config:
+        from_attributes = True
+
+
+class ConversationOut(BaseModel):
+    user: UserOut
+    last_message: DirectMessageOut | None
+    unread_count: int
+
+    class Config:
+        from_attributes = True
+
+
 # ---- Notifications ----
 class NotificationOut(BaseModel):
     id: int

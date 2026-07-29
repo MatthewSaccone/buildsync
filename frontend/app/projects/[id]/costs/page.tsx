@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
-import Topbar from "@/components/Topbar";
 import PageLoader from "@/components/PageLoader";
 import { useAuth } from "@/lib/auth";
 import {
@@ -81,13 +79,7 @@ export default function ProjectCostsPage() {
   if (loading || !user || !project) return <PageLoader />;
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <Topbar />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-5 py-8">
-        <Link href={`/projects/${projectId}`} className="label-mono mb-4 inline-block" style={{ color: "var(--amber)" }}>
-          ← Back to project
-        </Link>
-
+    <div>
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 style={{ fontFamily: "var(--font-display)", fontSize: "1.6rem" }}>Materials cost</h1>
@@ -164,7 +156,6 @@ export default function ProjectCostsPage() {
             </table>
           </div>
         )}
-      </main>
     </div>
   );
 }

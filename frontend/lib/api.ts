@@ -480,7 +480,7 @@ export interface DirectMessage {
   id: number;
   project_id: number;
   sender_id: number;
-  recipient_id: number;
+  recipient_id: number | null;
   body: string;
   created_at: string;
   read_at: string | null;
@@ -517,6 +517,32 @@ export async function sendMessage(
     body: JSON.stringify({ body }),
   });
   return res.json();
+}
+
+export async function listGeneralMessages(projectId: string | number): Promise<DirectMessage[]> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/general-messages`);
+  return res.json();
+}
+
+export async function sendGeneralMessage(
+  projectId: string | number,
+  body: string
+): Promise<DirectMessage> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/general-messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+  return res.json();
+}
+
+export async function deleteConversation(
+  projectId: string | number,
+  otherUserId: string | number
+): Promise<void> {
+  await fetchWithAuth(`${API_URL}/projects/${projectId}/messages/${otherUserId}`, {
+    method: "DELETE",
+  });
 }
 
 export async function listMembers(projectId: string | number): Promise<ProjectMember[]> {

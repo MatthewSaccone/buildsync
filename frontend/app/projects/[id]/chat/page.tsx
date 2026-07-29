@@ -2,22 +2,26 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import Topbar from "@/components/Topbar";
 import PageLoader from "@/components/PageLoader";
-import ProjectTabs from "@/components/ProjectTabs";
 import { useAuth } from "@/lib/auth";
 import {
   getProject,
   listConversations,
   getMessageThread,
   sendMessage,
+  listGeneralMessages,
+  sendGeneralMessage,
   listMembers,
+  deleteConversation,
   connectNotificationSocket,
+  connectProjectSocket,
   type Project,
   type Conversation,
   type DirectMessage,
   type ProjectMember,
 } from "@/lib/api";
+
+type Channel = "general" | number;
 
 function timeLabel(iso: string): string {
   const d = new Date(iso);
@@ -42,11 +46,13 @@ export default function ChatPage() {
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [fetching, setFetching] = useState(true);
 
-  const [activeUserId, setActiveUserId] = useState<number | null>(null);
+  // "general" for the project-wide channel, or a user id for a private DM.
+  const [activeChannel, setActiveChannel] = useState<Channel | null>("general");
   const [thread, setThread] = useState<DirectMessage[]>([]);
   const [threadLoading, setThreadLoading] = useState(false);
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -66,39 +72,55 @@ export default function ChatPage() {
 
         const withParam = searchParams.get("with");
         if (withParam) {
-          setActiveUserId(Number(withParam));
-        } else if (convos.length > 0) {
-          setActiveUserId(convos[0].user.id);
+          setActiveChannel(Number(withParam));
+        } else {
+          setActiveChannel("general");
         }
+      })
+      .catch((err) => {
+        console.error("Failed to load chat data:", err);
+        setLoadError(err?.message ?? "Failed to load chat.");
       })
       .finally(() => setFetching(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, projectId]);
 
   useEffect(() => {
-    if (!activeUserId) return;
+    if (activeChannel === null) return;
     setThreadLoading(true);
-    getMessageThread(projectId, activeUserId)
-      .then(setThread)
-      .finally(() => setThreadLoading(false));
 
-    // Opening a thread marks it read server-side — reflect that locally too.
-    setConversations((prev) =>
-      prev.map((c) => (c.user.id === activeUserId ? { ...c, unread_count: 0 } : c))
-    );
-  }, [activeUserId, projectId]);
+    const load =
+      activeChannel === "general"
+        ? listGeneralMessages(projectId)
+        : getMessageThread(projectId, activeChannel);
+
+    load.then(setThread).finally(() => setThreadLoading(false));
+
+    // Opening a DM marks it read server-side — reflect that locally too.
+    if (activeChannel !== "general") {
+      setConversations((prev) =>
+        prev.map((c) => (c.user.id === activeChannel ? { ...c, unread_count: 0 } : c))
+      );
+    }
+  }, [activeChannel, projectId]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [thread]);
 
-  // Live incoming messages over the per-user notification socket.
+  const activeChannelRef = useRef<Channel | null>(null);
+  useEffect(() => {
+    activeChannelRef.current = activeChannel;
+  }, [activeChannel]);
+
+  // Live incoming DMs over the per-user notification socket.
   useEffect(() => {
     if (!user) return;
     const ws = connectNotificationSocket((event: any) => {
       if (event.event !== "message_created") return;
       const msg: DirectMessage = event.message;
       const otherId = msg.sender_id === user.id ? msg.recipient_id : msg.sender_id;
+      if (otherId == null) return;
 
       setConversations((prev) => {
         const exists = prev.some((c) => c.user.id === otherId);
@@ -108,7 +130,10 @@ export default function ChatPage() {
                 ? {
                     ...c,
                     last_message: msg,
-                    unread_count: otherId === activeUserIdRef.current || msg.sender_id === user.id ? c.unread_count : c.unread_count + 1,
+                    unread_count:
+                      otherId === activeChannelRef.current || msg.sender_id === user.id
+                        ? c.unread_count
+                        : c.unread_count + 1,
                   }
                 : c
             )
@@ -120,7 +145,7 @@ export default function ChatPage() {
         });
       });
 
-      if (otherId === activeUserIdRef.current) {
+      if (otherId === activeChannelRef.current) {
         setThread((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
       }
     });
@@ -128,10 +153,19 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  const activeUserIdRef = useRef<number | null>(null);
+  // Live incoming general-channel messages over the project-wide socket.
   useEffect(() => {
-    activeUserIdRef.current = activeUserId;
-  }, [activeUserId]);
+    if (!user || !projectId) return;
+    const ws = connectProjectSocket(projectId, (event: any) => {
+      if (event.event !== "general_message_created") return;
+      const msg: DirectMessage = event.message;
+      if (activeChannelRef.current === "general") {
+        setThread((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+      }
+    });
+    return () => ws?.close();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, projectId]);
 
   function handleBodyChange(value: string) {
     setBody(value);
@@ -155,20 +189,25 @@ export default function ChatPage() {
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
-    if (!activeUserId || !body.trim()) return;
+    if (activeChannel === null || !body.trim()) return;
     setSending(true);
     try {
-      const msg = await sendMessage(projectId, activeUserId, body.trim());
-      setThread((prev) => [...prev, msg]);
-      setConversations((prev) =>
-        prev
-          .map((c) => (c.user.id === activeUserId ? { ...c, last_message: msg } : c))
-          .sort((a, b) => {
-            const at = a.last_message ? new Date(a.last_message.created_at).getTime() : 0;
-            const bt = b.last_message ? new Date(b.last_message.created_at).getTime() : 0;
-            return bt - at;
-          })
-      );
+      if (activeChannel === "general") {
+        const msg = await sendGeneralMessage(projectId, body.trim());
+        setThread((prev) => [...prev, msg]);
+      } else {
+        const msg = await sendMessage(projectId, activeChannel, body.trim());
+        setThread((prev) => [...prev, msg]);
+        setConversations((prev) =>
+          prev
+            .map((c) => (c.user.id === activeChannel ? { ...c, last_message: msg } : c))
+            .sort((a, b) => {
+              const at = a.last_message ? new Date(a.last_message.created_at).getTime() : 0;
+              const bt = b.last_message ? new Date(b.last_message.created_at).getTime() : 0;
+              return bt - at;
+            })
+        );
+      }
       setBody("");
       setMentionQuery(null);
     } finally {
@@ -176,9 +215,31 @@ export default function ChatPage() {
     }
   }
 
-  if (loading || !user || fetching || !project) return <PageLoader />;
+  async function handleDeleteConversation(otherUserId: number) {
+    if (!confirm("Delete this entire conversation? This can't be undone.")) return;
+    await deleteConversation(projectId, otherUserId);
+    setConversations((prev) => prev.filter((c) => c.user.id !== otherUserId));
+    if (activeChannel === otherUserId) {
+      setThread([]);
+      setActiveChannel("general");
+    }
+  }
 
-  const activeConvo = conversations.find((c) => c.user.id === activeUserId);
+  if (loading || !user || fetching) return <PageLoader />;
+
+  if (loadError || !project) {
+    return (
+      <div className="panel p-6 text-sm" style={{ color: "var(--paper-dim)" }}>
+        Couldn't load chat{loadError ? `: ${loadError}` : "."} Try refreshing the page.
+      </div>
+    );
+  }
+
+  const activeConvo =
+    activeChannel !== "general" && activeChannel !== null
+      ? conversations.find((c) => c.user.id === activeChannel)
+      : undefined;
+  const activeTitle = activeChannel === "general" ? "General" : activeConvo?.user.full_name;
   const mentionCandidates =
     mentionQuery !== null
       ? members
@@ -188,39 +249,59 @@ export default function ChatPage() {
       : [];
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <Topbar />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-5 py-8">
-        <h1 className="mb-1" style={{ fontFamily: "var(--font-display)", fontSize: "1.7rem" }}>
-          {project.name} — Chat
-        </h1>
-        <p className="label-mono mb-6">Direct messages with people on this job</p>
-        <ProjectTabs projectId={projectId} />
-
+    <div>
         <div className="grid gap-4 md:grid-cols-[240px_1fr]" style={{ height: 560 }}>
-          {/* Conversation list */}
+          {/* Channel list: General (pinned, permanent) + private DMs */}
           <div className="panel flex flex-col overflow-y-auto">
+            <button
+              onClick={() => setActiveChannel("general")}
+              className="flex items-center gap-2 px-3 py-3 text-left"
+              style={{
+                background: activeChannel === "general" ? "var(--ink-2)" : "transparent",
+                borderBottom: "1px solid var(--line-soft)",
+              }}
+            >
+              <span
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+                style={{ background: "var(--amber)", color: "#0b1521" }}
+              >
+                #
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">General</p>
+                <p className="truncate label-mono" style={{ color: "var(--paper-dim)" }}>
+                  Everyone on this project
+                </p>
+              </div>
+            </button>
+
+            <p className="px-3 pt-3 pb-1 label-mono" style={{ color: "var(--paper-dim)" }}>
+              Direct messages
+            </p>
+
             {conversations.length === 0 ? (
-              <p className="p-4 text-sm" style={{ color: "var(--paper-dim)" }}>
+              <p className="p-3 text-sm" style={{ color: "var(--paper-dim)" }}>
                 No other members on this project yet.
               </p>
             ) : (
               conversations.map((c) => (
-                <button
+                <div
                   key={c.user.id}
-                  onClick={() => setActiveUserId(c.user.id)}
-                  className="flex items-center justify-between gap-2 px-3 py-3 text-left"
+                  className="group flex items-center justify-between gap-2 px-3 py-3"
                   style={{
-                    background: activeUserId === c.user.id ? "var(--ink-2)" : "transparent",
+                    background: activeChannel === c.user.id ? "var(--ink-2)" : "transparent",
                     borderBottom: "1px solid var(--line-soft)",
                   }}
                 >
-                  <div className="min-w-0">
+                  <button
+                    onClick={() => setActiveChannel(c.user.id)}
+                    className="min-w-0 flex-1 text-left"
+                  >
                     <p className="truncate text-sm font-medium">{c.user.full_name}</p>
                     <p className="truncate label-mono">
                       {c.last_message ? c.last_message.body : "No messages yet"}
                     </p>
-                  </div>
+                  </button>
                   {c.unread_count > 0 && (
                     <span
                       className="shrink-0 rounded-full px-1.5 py-0.5 text-xs font-semibold"
@@ -229,21 +310,45 @@ export default function ChatPage() {
                       {c.unread_count}
                     </span>
                   )}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteConversation(c.user.id)}
+                    className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                    style={{ color: "var(--paper-dim)" }}
+                    title="Delete conversation"
+                  >
+                    ✕
+                  </button>
+                </div>
               ))
             )}
           </div>
 
           {/* Thread */}
           <div className="panel flex flex-col overflow-hidden">
-            {!activeConvo ? (
+            {activeChannel === null || (activeChannel !== "general" && !activeConvo) ? (
               <div className="flex flex-1 items-center justify-center text-sm" style={{ color: "var(--paper-dim)" }}>
-                Select someone to start chatting.
+                Select a channel to start chatting.
               </div>
             ) : (
               <>
-                <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--line)" }}>
-                  <span className="text-sm font-medium">{activeConvo.user.full_name}</span>
+                <div
+                  className="flex items-center justify-between px-4 py-3"
+                  style={{ borderBottom: "1px solid var(--line)" }}
+                >
+                  <span className="text-sm font-medium">{activeTitle}</span>
+                  {/* General is permanent — no delete option shown for it */}
+                  {activeChannel !== "general" && activeConvo && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteConversation(activeConvo.user.id)}
+                      className="label-mono"
+                      style={{ color: "var(--paper-dim)" }}
+                      title="Delete conversation"
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
 
                 <div className="flex-1 overflow-y-auto px-4 py-3">
@@ -266,6 +371,14 @@ export default function ChatPage() {
                                 color: mine ? "#0b1521" : "var(--paper)",
                               }}
                             >
+                              {activeChannel === "general" && !mine && (
+                                <p
+                                  className="label-mono mb-0.5"
+                                  style={{ color: "var(--paper-dim)" }}
+                                >
+                                  {m.sender.full_name}
+                                </p>
+                              )}
                               <p>{m.body}</p>
                               <p
                                 className="label-mono mt-1"
@@ -319,7 +432,6 @@ export default function ChatPage() {
             )}
           </div>
         </div>
-      </main>
     </div>
   );
 }

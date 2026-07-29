@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.database import Base, engine
-from app.routers import auth, projects, sheets, pins, comments, notifications, websocket, materials, pin_materials, costs, attachments
+from app.routers import auth, projects, sheets, pins, comments, notifications, websocket, materials, pin_materials, costs, attachments, messages
 import app.models  # noqa: F401 ensures all models are registered before create_all
 
 Base.metadata.create_all(bind=engine)
@@ -34,6 +34,7 @@ app.include_router(materials.router)
 app.include_router(costs.router)
 app.include_router(attachments.router)
 app.include_router(websocket.router)
+app.include_router(messages.router)
 
 # Uploaded plan/photo sheets, served so the frontend can render them directly.
 app.mount("/static/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")

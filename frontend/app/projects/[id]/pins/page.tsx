@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import Topbar from "@/components/Topbar";
 import PageLoader from "@/components/PageLoader";
 import StatusBadge from "@/components/StatusBadge";
 import { useAuth } from "@/lib/auth";
@@ -126,17 +125,7 @@ export default function ProjectPinsPage() {
   );
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <Topbar />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-5 py-8">
-        <Link href={`/projects/${projectId}`} className="label-mono mb-4 inline-block" style={{ color: "var(--amber)" }}>
-          ← Back to project
-        </Link>
-        <h1 className="mb-1" style={{ fontFamily: "var(--font-display)", fontSize: "1.6rem" }}>
-          All pins
-        </h1>
-        <p className="label-mono mb-6">{project.name}</p>
-
+    <div>
         <form onSubmit={handleSearch} className="mb-4 flex gap-2">
           <input
             className="field"
@@ -264,7 +253,6 @@ export default function ProjectPinsPage() {
             )}
           </>
         )}
-      </main>
     </div>
   );
 }
