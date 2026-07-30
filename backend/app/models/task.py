@@ -42,3 +42,12 @@ class Task(Base):
     comments = relationship("Comment", back_populates="task", cascade="all, delete-orphan")
     attachments = relationship("Attachment", back_populates="task", cascade="all, delete-orphan")
     related_pins = relationship("Pin", secondary=task_pins, back_populates="tasks")
+
+    # Cost line items directly on the task (e.g. "Order concrete" has no Pin
+    # to hang materials off of, so it needs its own cost lines).
+    materials = relationship("TaskMaterial", back_populates="task", cascade="all, delete-orphan")
+
+    # Calendar entries linked to this task. Not cascade-deleted — deleting a
+    # task unlinks its scheduled jobs (see tasks router) rather than deleting
+    # the calendar entries themselves.
+    scheduled_jobs = relationship("ScheduledJob", back_populates="task")

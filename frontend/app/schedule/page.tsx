@@ -9,6 +9,7 @@ import {
   listProjects,
   listMembers,
   listMySchedule,
+  listTasks,
   createScheduledJob,
   updateScheduledJob,
   deleteScheduledJob,
@@ -16,6 +17,7 @@ import {
   type Project,
   type ProjectMember,
   type ScheduledJob,
+  type Task,
   type UserRole,
 } from "@/lib/api";
 
@@ -140,6 +142,7 @@ interface JobFormState {
   trade: UserRole | "";
   assigned_to_id: number | "";
   depends_on_id: number | "";
+  task_id: number | "";
   date: string;
   start: string;
   end: string;
@@ -152,6 +155,7 @@ const EMPTY_FORM: JobFormState = {
   trade: "",
   assigned_to_id: "",
   depends_on_id: "",
+  task_id: "",
   date: toLocalInputDate(new Date()),
   start: "08:00",
   end: "12:00",
@@ -166,6 +170,11 @@ export default function SchedulePage() {
   const [jobs, setJobs] = useState<ScheduledJob[]>([]);
   const [fetching, setFetching] = useState(true);
   const [weather, setWeather] = useState<Record<number, Record<string, DayWeather>>>({});
+
+  // Tasks for whichever project is currently selected in the form — fetched
+  // on demand rather than for every project up front, since the task list
+  // is only needed while the form is open.
+  const [tasksForFormProject, setTasksForFormProject] = useState<Task[]>([]);
 
   const [view, setView] = useState<ViewMode>("week");
   const [anchor, setAnchor] = useState(new Date());
@@ -213,6 +222,18 @@ export default function SchedulePage() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projects]);
+
+  // Load the task list for the form's currently-selected project, whenever
+  // that selection changes while the form is open.
+  useEffect(() => {
+    if (!formOpen || !form.project_id) {
+      setTasksForFormProject([]);
+      return;
+    }
+    listTasks(form.project_id)
+      .then(setTasksForFormProject)
+      .catch(() => setTasksForFormProject([]));
+  }, [formOpen, form.project_id]);
 
   const membersForSite = useMemo(() => {
     if (siteFilter === "all") {
@@ -263,6 +284,7 @@ export default function SchedulePage() {
       trade: job.trade ?? "",
       assigned_to_id: job.assigned_to_id ?? "",
       depends_on_id: job.depends_on_id ?? "",
+      task_id: job.task_id ?? "",
       date: toLocalInputDate(start),
       start: toLocalInputTime(start),
       end: toLocalInputTime(end),
@@ -297,6 +319,7 @@ export default function SchedulePage() {
         trade: form.trade || null,
         assigned_to_id: form.assigned_to_id === "" ? null : Number(form.assigned_to_id),
         depends_on_id: form.depends_on_id === "" ? null : Number(form.depends_on_id),
+        task_id: form.task_id === "" ? null : Number(form.task_id),
         start_time: start.toISOString(),
         end_time: end.toISOString(),
       };
@@ -405,6 +428,14 @@ export default function SchedulePage() {
           <div className="mt-0.5 flex flex-wrap items-center gap-1" style={{ color: "var(--paper-dim)" }}>
             {job.assignee_name && <span>{job.assignee_name}</span>}
             {siteFilter === "all" && job.project_name && <span>· {job.project_name}</span>}
+            {job.task_title && (
+              <span
+                className="label-mono rounded-sm px-1"
+                style={{ border: "1px solid var(--line-soft)", color: "var(--amber)" }}
+              >
+                ✓ {job.task_title}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -687,7 +718,15 @@ export default function SchedulePage() {
               <select
                 className="field"
                 value={form.project_id}
-                onChange={(e) => setForm((f) => ({ ...f, project_id: Number(e.target.value), assigned_to_id: "", depends_on_id: "" }))}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    project_id: Number(e.target.value),
+                    assigned_to_id: "",
+                    depends_on_id: "",
+                    task_id: "",
+                  }))
+                }
                 required
               >
                 <option value="" disabled>
@@ -744,6 +783,22 @@ export default function SchedulePage() {
                 </select>
               </label>
             </div>
+
+            <label className="flex flex-col gap-1 text-sm">
+              Related task
+              <select
+                className="field"
+                value={form.task_id}
+                onChange={(e) => setForm((f) => ({ ...f, task_id: e.target.value === "" ? "" : Number(e.target.value) }))}
+              >
+                <option value="">No related task</option>
+                {tasksForFormProject.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.title}
+                  </option>
+                ))}
+              </select>
+            </label>
 
             <label className="flex flex-col gap-1 text-sm">
               Depends on

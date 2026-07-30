@@ -7,10 +7,13 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.comment import Comment
 from app.models.enums import TaskStatus
+from app.models.material import MaterialVariant
 from app.models.pin import Pin
 from app.models.project import ProjectMember
+from app.models.scheduled_job import ScheduledJob
 from app.models.sheet import Sheet
 from app.models.task import Task
+from app.models.task_material import TaskMaterial
 from app.models.user import User
 from app.schemas.schemas import TaskCreate, TaskUpdate, TaskOut, CommentCreate, CommentOut
 from app.services.connection_manager import manager
@@ -25,6 +28,7 @@ TASK_LOAD_OPTIONS = (
     selectinload(Task.comments).selectinload(Comment.author),
     selectinload(Task.comments).selectinload(Comment.attachments),
     selectinload(Task.attachments),
+    selectinload(Task.materials).selectinload(TaskMaterial.material_variant).selectinload(MaterialVariant.material),
 )
 
 
@@ -188,6 +192,13 @@ async def delete_task(
 ):
     _require_membership(db, project_id, user.id)
     task = _get_task(db, project_id, task_id)
+
+    # Deleting a task shouldn't silently delete calendar entries tied to it —
+    # unlink them instead so they stay on the schedule as standalone jobs.
+    linked_jobs = db.query(ScheduledJob).filter(ScheduledJob.task_id == task_id).all()
+    for job in linked_jobs:
+        job.task_id = None
+
     db.delete(task)
     db.commit()
 

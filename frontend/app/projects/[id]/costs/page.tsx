@@ -104,6 +104,16 @@ export default function ProjectCostsPage() {
           </div>
         </div>
 
+        {/* The "pin status" filter only narrows pin-sourced material lines —
+            task-sourced lines (materials added directly to a task) are
+            always included regardless of this filter, since Task has its
+            own separate status. */}
+        {statusFilter !== "all" && (
+          <p className="mb-3 text-xs" style={{ color: "var(--paper-dim)" }}>
+            Filtering by pin status — materials attached directly to tasks are always included.
+          </p>
+        )}
+
         {fetching || !summary ? (
           <div className="flex flex-col gap-2">
             {[0, 1, 2].map((i) => (
@@ -112,7 +122,7 @@ export default function ProjectCostsPage() {
           </div>
         ) : summary.lines.length === 0 ? (
           <div className="panel px-6 py-16 text-center" style={{ color: "var(--paper-dim)" }}>
-            No materials attached to any pins yet.
+            No materials attached to any pins or tasks yet.
           </div>
         ) : (
           <div className="panel overflow-x-auto">

@@ -415,6 +415,7 @@ class ScheduledJobCreate(BaseModel):
     title: str
     trade: UserRole | None = None
     pin_id: int | None = None
+    task_id: int | None = None
     assigned_to_id: int | None = None
     depends_on_id: int | None = None
     start_time: datetime
@@ -432,6 +433,7 @@ class ScheduledJobUpdate(BaseModel):
     trade: UserRole | None = None
     status: JobStatus | None = None
     pin_id: int | None = None
+    task_id: int | None = None
     assigned_to_id: int | None = None
     depends_on_id: int | None = None
     start_time: datetime | None = None
@@ -442,6 +444,7 @@ class ScheduledJobOut(BaseModel):
     id: int
     project_id: int
     pin_id: int | None
+    task_id: int | None
     title: str
     trade: UserRole | None
     status: JobStatus
@@ -458,6 +461,7 @@ class ScheduledJobOut(BaseModel):
     project_address: str | None = None
     assignee_name: str | None = None
     pin_title: str | None = None
+    task_title: str | None = None
 
     class Config:
         from_attributes = True
@@ -471,6 +475,57 @@ class TaskPinRef(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class TaskMaterialCreate(BaseModel):
+    material_variant_id: int
+    quantity: float = 1
+
+
+class TaskMaterialUpdate(BaseModel):
+    quantity: float
+
+
+class TaskMaterialOut(BaseModel):
+    id: int
+    task_id: int
+    material_variant_id: int
+    material_name: str
+    material_category: str | None
+    size: str
+    unit: str | None
+    quantity: float
+    unit_price: float
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_task_material_orm(cls, data):
+        # Same shape as PinMaterialOut — accept a dict as-is, or pull the
+        # display fields off a TaskMaterial ORM instance's nested variant.
+        if isinstance(data, dict):
+            return data
+        variant = data.material_variant
+        return {
+            "id": data.id,
+            "task_id": data.task_id,
+            "material_variant_id": data.material_variant_id,
+            "material_name": variant.material.name,
+            "material_category": variant.material.category,
+            "size": variant.size,
+            "unit": variant.unit,
+            "quantity": data.quantity,
+            "unit_price": float(data.unit_price),
+            "created_at": data.created_at,
+        }
+
+    @computed_field
+    @property
+    def line_total(self) -> float:
+        return round(self.quantity * self.unit_price, 2)
 
 
 class TaskCreate(BaseModel):
@@ -508,6 +563,12 @@ class TaskOut(BaseModel):
     comments: list[CommentOut] = []
     attachments: list[AttachmentOut] = []
     related_pins: list[TaskPinRef] = []
+    materials: list[TaskMaterialOut] = []
 
     class Config:
         from_attributes = True
+
+    @computed_field
+    @property
+    def total_cost(self) -> float:
+        return round(sum(m.line_total for m in self.materials), 2)

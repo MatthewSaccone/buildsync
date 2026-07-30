@@ -11,9 +11,10 @@ class ScheduledJob(Base):
     """A block of work assigned to a person on a project's calendar.
 
     Optionally linked to a Pin (so scheduling a punch-list item shows up on
-    the calendar), and optionally dependent on another ScheduledJob so that
-    sequential trades (e.g. Foundation -> Framing -> Electrical) can be
-    chained and flagged when out of order.
+    the calendar) and/or a Task (so a task's work can be blocked out on the
+    calendar independently of its due_date), and optionally dependent on
+    another ScheduledJob so that sequential trades (e.g. Foundation ->
+    Framing -> Electrical) can be chained and flagged when out of order.
     """
 
     __tablename__ = "scheduled_jobs"
@@ -21,6 +22,7 @@ class ScheduledJob(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
     pin_id: Mapped[int | None] = mapped_column(ForeignKey("pins.id"), nullable=True)
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"), nullable=True)
 
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     trade: Mapped[UserRole | None] = mapped_column(SAEnum(UserRole), nullable=True)
@@ -37,5 +39,6 @@ class ScheduledJob(Base):
 
     project = relationship("Project", back_populates="scheduled_jobs")
     pin = relationship("Pin")
+    task = relationship("Task", back_populates="scheduled_jobs")
     assignee = relationship("User", foreign_keys=[assigned_to_id])
     depends_on = relationship("ScheduledJob", remote_side=[id])

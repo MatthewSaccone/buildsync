@@ -11,6 +11,8 @@ from app.models.pin import Pin
 from app.models.pin_material import PinMaterial
 from app.models.project import ProjectMember
 from app.models.sheet import Sheet
+from app.models.task import Task
+from app.models.task_material import TaskMaterial
 from app.models.user import User
 from app.schemas.schemas import ProjectCostSummary, MaterialCostLine
 
@@ -28,29 +30,47 @@ def _require_membership(db: Session, project_id: int, user_id: int) -> None:
 
 
 def _aggregate(db: Session, project_id: int, status: str | None) -> list[MaterialCostLine]:
-    query = (
+    """Combines materials attached to Pins with materials attached directly
+    to Tasks (e.g. a procurement task like "Order concrete" that has no Pin
+    to hang materials off of) into one rollup, keyed by material variant.
+
+    `status` filters Pin-sourced lines by Pin.status only — task materials
+    aren't filtered by it, since Task has its own separate status enum.
+    """
+    pin_query = (
         db.query(PinMaterial)
         .join(Pin, PinMaterial.pin_id == Pin.id)
         .join(Sheet, Pin.sheet_id == Sheet.id)
         .filter(Sheet.project_id == project_id)
     )
     if status:
-        query = query.filter(Pin.status == status)
+        pin_query = pin_query.filter(Pin.status == status)
+
+    task_query = (
+        db.query(TaskMaterial)
+        .join(Task, TaskMaterial.task_id == Task.id)
+        .filter(Task.project_id == project_id)
+    )
 
     totals: dict[int, MaterialCostLine] = {}
-    for pm in query.all():
-        variant = pm.material_variant
-        if variant.id not in totals:
-            totals[variant.id] = MaterialCostLine(
-                material_variant_id=variant.id,
-                material_name=variant.material.name,
-                material_category=variant.material.category,
-                size=variant.size,
-                unit=variant.unit,
-                total_quantity=0,
-                unit_price=float(variant.price),
-            )
-        totals[variant.id].total_quantity += pm.quantity
+
+    def _add(rows):
+        for row in rows:
+            variant = row.material_variant
+            if variant.id not in totals:
+                totals[variant.id] = MaterialCostLine(
+                    material_variant_id=variant.id,
+                    material_name=variant.material.name,
+                    material_category=variant.material.category,
+                    size=variant.size,
+                    unit=variant.unit,
+                    total_quantity=0,
+                    unit_price=float(variant.price),
+                )
+            totals[variant.id].total_quantity += row.quantity
+
+    _add(pin_query.all())
+    _add(task_query.all())
 
     return sorted(totals.values(), key=lambda line: (line.material_category or "", line.material_name))
 
@@ -62,9 +82,9 @@ def get_project_cost_summary(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Aggregated material quantities/cost across every pin in the project.
-    Uses current catalog pricing (not the per-pin price snapshot) so the total
-    reflects what it would cost to buy everything today."""
+    """Aggregated material quantities/cost across every pin and task in the
+    project. Uses current catalog pricing (not the per-line price snapshot)
+    so the total reflects what it would cost to buy everything today."""
     _require_membership(db, project_id, user.id)
     lines = _aggregate(db, project_id, status)
     return ProjectCostSummary(project_id=project_id, lines=lines)
@@ -78,7 +98,8 @@ def export_materials_csv(
     user: User = Depends(get_current_user),
 ):
     """A shopping-list CSV: one row per material size, with the total quantity
-    needed across the project and the resulting line cost."""
+    needed across the project (from both pins and tasks) and the resulting
+    line cost."""
     _require_membership(db, project_id, user.id)
     lines = _aggregate(db, project_id, status)
 

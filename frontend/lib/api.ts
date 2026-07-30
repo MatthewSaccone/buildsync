@@ -179,6 +179,7 @@ export interface ScheduledJob {
   id: number;
   project_id: number;
   pin_id: number | null;
+  task_id: number | null;
   title: string;
   trade: UserRole | null;
   status: JobStatus;
@@ -192,6 +193,7 @@ export interface ScheduledJob {
   project_address: string | null;
   assignee_name: string | null;
   pin_title: string | null;
+  task_title: string | null;
 }
 
 export interface SearchResults {
@@ -1041,10 +1043,11 @@ export interface ScheduledJobInput {
   title: string;
   trade?: UserRole | null;
   pin_id?: number | null;
+  task_id?: number | null;
   assigned_to_id?: number | null;
   depends_on_id?: number | null;
-  start_time: string; // ISO
-  end_time: string; // ISO
+  start_time: string;
+  end_time: string;
 }
 
 export interface ScheduledJobUpdateInput {
@@ -1052,6 +1055,7 @@ export interface ScheduledJobUpdateInput {
   trade?: UserRole | null;
   status?: JobStatus;
   pin_id?: number | null;
+  task_id?: number | null;
   assigned_to_id?: number | null;
   depends_on_id?: number | null;
   start_time?: string;
@@ -1132,6 +1136,20 @@ export interface TaskPinRef {
   status: PinStatus;
 }
 
+export interface TaskMaterial {
+  id: number;
+  task_id: number;
+  material_variant_id: number;
+  material_name: string;
+  material_category: string | null;
+  size: string;
+  unit: string | null;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+  created_at: string;
+}
+
 export interface Task {
   id: number;
   project_id: number;
@@ -1148,6 +1166,8 @@ export interface Task {
   comments: Comment[];
   attachments: Attachment[];
   related_pins: TaskPinRef[];
+  materials: TaskMaterial[];
+  total_cost: number;  
 }
 
 export interface TaskInput {
@@ -1224,4 +1244,45 @@ export async function addTaskComment(taskId: number | string, body: string): Pro
     body: JSON.stringify({ body }),
   });
   return res.json();
+}
+
+// ==========================================
+// Task Materials API
+// ==========================================
+
+export async function listTaskMaterials(taskId: number | string): Promise<TaskMaterial[]> {
+  const res = await fetchWithAuth(`${API_URL}/tasks/${taskId}/materials`);
+  return res.json();
+}
+
+export async function addTaskMaterial(
+  taskId: number | string,
+  data: { material_variant_id: number; quantity: number }
+): Promise<TaskMaterial> {
+  const res = await fetchWithAuth(`${API_URL}/tasks/${taskId}/materials`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function updateTaskMaterial(
+  taskId: number | string,
+  taskMaterialId: number | string,
+  quantity: number
+): Promise<TaskMaterial> {
+  const res = await fetchWithAuth(`${API_URL}/tasks/${taskId}/materials/${taskMaterialId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ quantity }),
+  });
+  return res.json();
+}
+
+export async function removeTaskMaterial(
+  taskId: number | string,
+  taskMaterialId: number | string
+): Promise<void> {
+  await fetchWithAuth(`${API_URL}/tasks/${taskId}/materials/${taskMaterialId}`, { method: "DELETE" });
 }

@@ -9,6 +9,7 @@ from app.models.enums import JobStatus, UserRole
 from app.models.pin import Pin
 from app.models.project import Project, ProjectMember
 from app.models.scheduled_job import ScheduledJob
+from app.models.task import Task
 from app.models.user import User
 from app.schemas.schemas import ScheduledJobCreate, ScheduledJobUpdate, ScheduledJobOut
 from app.services.notification_service import notify
@@ -37,10 +38,12 @@ def _serialize(db: Session, job: ScheduledJob) -> ScheduledJobOut:
     project = db.get(Project, job.project_id)
     assignee = db.get(User, job.assigned_to_id) if job.assigned_to_id else None
     pin = db.get(Pin, job.pin_id) if job.pin_id else None
+    task = db.get(Task, job.task_id) if job.task_id else None
     return ScheduledJobOut(
         id=job.id,
         project_id=job.project_id,
         pin_id=job.pin_id,
+        task_id=job.task_id,
         title=job.title,
         trade=job.trade,
         status=job.status,
@@ -54,6 +57,7 @@ def _serialize(db: Session, job: ScheduledJob) -> ScheduledJobOut:
         project_address=project.address if project else None,
         assignee_name=assignee.full_name if assignee else None,
         pin_title=pin.title if pin else None,
+        task_title=task.title if task else None,
     )
 
 
@@ -79,6 +83,14 @@ def _validate_depends_on(db: Session, project_id: int, depends_on_id: int | None
         raise HTTPException(status_code=400, detail="Dependency must be a job on the same project")
 
 
+def _validate_task(db: Session, project_id: int, task_id: int | None):
+    if task_id is None:
+        return
+    task = db.get(Task, task_id)
+    if not task or task.project_id != project_id:
+        raise HTTPException(status_code=400, detail="Task must belong to the same project")
+
+
 @router.post("", response_model=ScheduledJobOut)
 async def create_scheduled_job(
     project_id: int,
@@ -89,6 +101,7 @@ async def create_scheduled_job(
     _require_membership(db, project_id, user.id)
     _validate_assignee(db, project_id, payload.assigned_to_id)
     _validate_depends_on(db, project_id, payload.depends_on_id)
+    _validate_task(db, project_id, payload.task_id)
 
     if payload.pin_id is not None:
         pin = db.get(Pin, payload.pin_id)
@@ -98,6 +111,7 @@ async def create_scheduled_job(
     job = ScheduledJob(
         project_id=project_id,
         pin_id=payload.pin_id,
+        task_id=payload.task_id,
         title=payload.title,
         trade=payload.trade,
         assigned_to_id=payload.assigned_to_id,
@@ -159,6 +173,8 @@ async def update_scheduled_job(
         _validate_assignee(db, project_id, update_data["assigned_to_id"])
     if "depends_on_id" in update_data:
         _validate_depends_on(db, project_id, update_data["depends_on_id"], self_id=job.id)
+    if "task_id" in update_data:
+        _validate_task(db, project_id, update_data["task_id"])
 
     previous_assignee_id = job.assigned_to_id
 
