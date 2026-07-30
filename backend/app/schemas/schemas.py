@@ -247,6 +247,7 @@ class DirectMessageOut(BaseModel):
     sender_id: int
     recipient_id: int | None
     body: str
+    task_id: int | None = None
     created_at: datetime
     read_at: datetime | None
     sender: UserOut
@@ -271,6 +272,7 @@ class NotificationOut(BaseModel):
     message: str
     project_id: int | None
     pin_id: int | None
+    task_id: int | None = None
     read: bool
     created_at: datetime
 
