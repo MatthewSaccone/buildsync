@@ -86,6 +86,9 @@ export default function Topbar() {
           <Link href="/materials" className="label-mono hidden sm:inline" style={{ color: "var(--paper-dim)" }}>
             Materials
           </Link>
+          <Link href="/schedule" className="label-mono hidden sm:inline" style={{ color: "var(--paper-dim)" }}>
+            Schedule
+          </Link>
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setOpen((v) => !v)}

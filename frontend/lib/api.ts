@@ -172,6 +172,27 @@ export interface SearchHit {
   snippet: string | null;
 }
 
+export type JobStatus = "scheduled" | "in_progress" | "done" | "blocked" | string;
+
+export interface ScheduledJob {
+  id: number;
+  project_id: number;
+  pin_id: number | null;
+  title: string;
+  trade: UserRole | null;
+  status: JobStatus;
+  assigned_to_id: number | null;
+  depends_on_id: number | null;
+  start_time: string;
+  end_time: string;
+  created_by_id: number;
+  created_at: string;
+  project_name: string | null;
+  project_address: string | null;
+  assignee_name: string | null;
+  pin_title: string | null;
+}
+
 export interface SearchResults {
   query: string;
   results: SearchHit[];
@@ -999,4 +1020,90 @@ export async function removePinMaterial(
       method: "DELETE",
     }
   );
+}
+
+// ==========================================
+// Schedule API
+// ==========================================
+
+export interface ScheduledJobInput {
+  title: string;
+  trade?: UserRole | null;
+  pin_id?: number | null;
+  assigned_to_id?: number | null;
+  depends_on_id?: number | null;
+  start_time: string; // ISO
+  end_time: string; // ISO
+}
+
+export interface ScheduledJobUpdateInput {
+  title?: string;
+  trade?: UserRole | null;
+  status?: JobStatus;
+  pin_id?: number | null;
+  assigned_to_id?: number | null;
+  depends_on_id?: number | null;
+  start_time?: string;
+  end_time?: string;
+}
+
+/** Every scheduled job across every project the current user belongs to —
+ * this is what powers the top-level /schedule page. */
+export async function listMySchedule(filters?: {
+  start?: string;
+  end?: string;
+  project_id?: number;
+  trade?: UserRole;
+}): Promise<ScheduledJob[]> {
+  const params = new URLSearchParams();
+  if (filters?.start) params.set("start", filters.start);
+  if (filters?.end) params.set("end", filters.end);
+  if (filters?.project_id) params.set("project_id", String(filters.project_id));
+  if (filters?.trade) params.set("trade", filters.trade);
+  const qs = params.toString();
+  const res = await fetchWithAuth(`${API_URL}/schedule${qs ? `?${qs}` : ""}`);
+  return res.json();
+}
+
+export async function listProjectSchedule(
+  projectId: number | string,
+  filters?: { start?: string; end?: string }
+): Promise<ScheduledJob[]> {
+  const params = new URLSearchParams();
+  if (filters?.start) params.set("start", filters.start);
+  if (filters?.end) params.set("end", filters.end);
+  const qs = params.toString();
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/schedule${qs ? `?${qs}` : ""}`);
+  return res.json();
+}
+
+export async function createScheduledJob(
+  projectId: number | string,
+  data: ScheduledJobInput
+): Promise<ScheduledJob> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/schedule`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function updateScheduledJob(
+  projectId: number | string,
+  jobId: number | string,
+  data: ScheduledJobUpdateInput
+): Promise<ScheduledJob> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/schedule/${jobId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function deleteScheduledJob(projectId: number | string, jobId: number | string): Promise<void> {
+  await fetchWithAuth(`${API_URL}/projects/${projectId}/schedule/${jobId}`, {
+    method: "DELETE",
+  });
 }

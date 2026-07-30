@@ -33,3 +33,10 @@ class ProjectRole(str, enum.Enum):
     ADMIN = "admin"
     MEMBER = "member"
     VIEWER = "viewer"
+
+
+class JobStatus(str, enum.Enum):
+    SCHEDULED = "scheduled"
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
+    BLOCKED = "blocked"

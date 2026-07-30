@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, computed_field, model_validator
 
-from app.models.enums import UserRole, PinStatus, PinPriority, ProjectRole
+from app.models.enums import UserRole, PinStatus, PinPriority, ProjectRole, JobStatus
 
 
 # ---- Auth ----
@@ -406,3 +406,56 @@ class SearchPinHit(BaseModel):
 class SearchResults(BaseModel):
     query: str
     results: list[SearchPinHit]
+
+
+# ---- Scheduled jobs (calendar / scheduler) ----
+class ScheduledJobCreate(BaseModel):
+    title: str
+    trade: UserRole | None = None
+    pin_id: int | None = None
+    assigned_to_id: int | None = None
+    depends_on_id: int | None = None
+    start_time: datetime
+    end_time: datetime
+
+    @model_validator(mode="after")
+    def _check_times(self):
+        if self.end_time <= self.start_time:
+            raise ValueError("end_time must be after start_time")
+        return self
+
+
+class ScheduledJobUpdate(BaseModel):
+    title: str | None = None
+    trade: UserRole | None = None
+    status: JobStatus | None = None
+    pin_id: int | None = None
+    assigned_to_id: int | None = None
+    depends_on_id: int | None = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+
+
+class ScheduledJobOut(BaseModel):
+    id: int
+    project_id: int
+    pin_id: int | None
+    title: str
+    trade: UserRole | None
+    status: JobStatus
+    assigned_to_id: int | None
+    depends_on_id: int | None
+    start_time: datetime
+    end_time: datetime
+    created_by_id: int
+    created_at: datetime
+
+    # Denormalized display fields, filled in by the router so the calendar
+    # doesn't need a second round-trip per project/user.
+    project_name: str | None = None
+    project_address: str | None = None
+    assignee_name: str | None = None
+    pin_title: str | None = None
+
+    class Config:
+        from_attributes = True
