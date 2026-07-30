@@ -87,21 +87,55 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (activeChannel === null) return;
-    setThreadLoading(true);
 
-    const load =
-      activeChannel === "general"
-        ? listGeneralMessages(projectId)
-        : getMessageThread(projectId, activeChannel);
+    const channel = activeChannel; // TypeScript now knows this is not null
 
-    load.then(setThread).finally(() => setThreadLoading(false));
+    let cancelled = false;
+
+    async function loadThread() {
+      setThreadLoading(true);
+
+      setThread([]);
+
+      try {
+        const messages =
+          channel === "general"
+            ? await listGeneralMessages(projectId)
+            : await getMessageThread(projectId, channel);
+
+        if (!cancelled) {
+          setThread(messages);
+        }
+      } catch (err) {
+        console.error("Failed to load messages:", err);
+
+        if (!cancelled) {
+          setThread([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setThreadLoading(false);
+        }
+      }
+    }
+
+    loadThread();
 
     // Opening a DM marks it read server-side — reflect that locally too.
     if (activeChannel !== "general") {
       setConversations((prev) =>
-        prev.map((c) => (c.user.id === activeChannel ? { ...c, unread_count: 0 } : c))
+        prev.map((c) =>
+          c.user.id === activeChannel
+            ? { ...c, unread_count: 0 }
+            : c
+        )
       );
     }
+
+    return () => {
+      cancelled = true;
+    };
+
   }, [activeChannel, projectId]);
 
   useEffect(() => {
@@ -145,8 +179,8 @@ export default function ChatPage() {
         });
       });
 
-      if (otherId === activeChannelRef.current) {
-        setThread((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+      if (activeChannelRef.current !== "general" && otherId === activeChannelRef.current) {
+        setThread((prev) => prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]);
       }
     });
     return () => ws?.close();
@@ -359,7 +393,7 @@ export default function ChatPage() {
                       No messages yet — say hi.
                     </p>
                   ) : (
-                    <div className="flex flex-col gap-2">
+                    <div key={activeChannel} className="flex flex-col gap-2">
                       {thread.map((m) => {
                         const mine = m.sender_id === user.id;
                         return (

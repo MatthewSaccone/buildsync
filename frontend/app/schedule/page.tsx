@@ -176,7 +176,7 @@ export default function SchedulePage() {
   // is only needed while the form is open.
   const [tasksForFormProject, setTasksForFormProject] = useState<Task[]>([]);
 
-  const [view, setView] = useState<ViewMode>("week");
+  const [view, setView] = useState<ViewMode>("month");
   const [anchor, setAnchor] = useState(new Date());
   const [siteFilter, setSiteFilter] = useState<number | "all">("all");
   const [tradeFilter, setTradeFilter] = useState<UserRole | "all">("all");

@@ -156,11 +156,11 @@ export default function ProjectDetailPage() {
 
         {activeTab === "chat" && (<ProjectChatPage />)}
 
-        <div className="max-w-[320px]">
+        <div className="mt-8 w-fit max-w-full">
           {/* Members */}
           <section>
             <h2 className="label-mono mb-3">Team</h2>
-            <div className="panel flex flex-col gap-3 p-4">
+            <div className="panel flex w-fit max-w-full flex-col gap-3 p-4">
               {members.map((m) => (
                 <div key={m.id} className="flex items-center justify-between gap-2 text-sm">
                   <div>
