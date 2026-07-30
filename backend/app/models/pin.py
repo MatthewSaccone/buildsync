@@ -29,3 +29,4 @@ class Pin(Base):
     comments = relationship("Comment", back_populates="pin", cascade="all, delete-orphan")
     materials = relationship("PinMaterial", back_populates="pin", cascade="all, delete-orphan")
     attachments = relationship("Attachment", back_populates="pin", cascade="all, delete-orphan")
+    tasks = relationship("Task", secondary="task_pins", back_populates="related_pins")

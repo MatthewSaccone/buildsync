@@ -156,7 +156,8 @@ export interface Pin {
 
 export interface Comment {
   id: number;
-  pin_id: number;
+  pin_id: number | null;
+  task_id: number | null;
   author_id: number;
   body: string;
   created_at: string;
@@ -216,6 +217,7 @@ export interface TokenPair {
 export interface Attachment {
   id: number;
   pin_id: number | null;
+  task_id: number | null;
   comment_id: number | null;
   file_path: string;
   uploaded_by_id: number;
@@ -889,23 +891,32 @@ export async function markAllNotificationsRead(): Promise<void> {
 // Attachments API
 // ==========================================
 
-/** Matches the (file, pinId?, commentId?) signature AttachmentUploader already calls. */
+/** Matches the (file, pinId?, commentId?) signature AttachmentUploader already calls;
+ * taskId is a new optional third target. */
 export async function uploadAttachment(
   file: File,
   pinId?: number | string,
-  commentId?: number | string
+  commentId?: number | string,
+  taskId?: number | string
 ): Promise<Attachment> {
-  if (!pinId && !commentId) {
-    throw new ApiError(400, "uploadAttachment needs a pinId or commentId");
+  if (!pinId && !commentId && !taskId) {
+    throw new ApiError(400, "uploadAttachment needs a pinId, taskId, or commentId");
   }
   const formData = new FormData();
   formData.append("file", file);
 
   const url = pinId
     ? `${API_URL}/pins/${pinId}/attachments`
+    : taskId
+    ? `${API_URL}/tasks/${taskId}/attachments`
     : `${API_URL}/comments/${commentId}/attachments`;
 
   const res = await fetchWithAuth(url, { method: "POST", body: formData });
+  return res.json();
+}
+
+export async function listTaskAttachments(taskId: number | string): Promise<Attachment[]> {
+  const res = await fetchWithAuth(`${API_URL}/tasks/${taskId}/attachments`);
   return res.json();
 }
 
@@ -1106,4 +1117,111 @@ export async function deleteScheduledJob(projectId: number | string, jobId: numb
   await fetchWithAuth(`${API_URL}/projects/${projectId}/schedule/${jobId}`, {
     method: "DELETE",
   });
+}
+
+// ==========================================
+// Tasks API
+// ==========================================
+
+export type TaskStatus = "todo" | "in_progress" | "blocked" | "done" | string;
+
+export interface TaskPinRef {
+  id: number;
+  title: string;
+  sheet_id: number;
+  status: PinStatus;
+}
+
+export interface Task {
+  id: number;
+  project_id: number;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: PinPriority;
+  owner_id: number | null;
+  owner: User | null;
+  due_date: string | null;
+  created_by_id: number;
+  created_at: string;
+  completed_at: string | null;
+  comments: Comment[];
+  attachments: Attachment[];
+  related_pins: TaskPinRef[];
+}
+
+export interface TaskInput {
+  title: string;
+  description?: string | null;
+  priority?: PinPriority;
+  owner_id?: number | null;
+  due_date?: string | null;
+  related_pin_ids?: number[];
+}
+
+export interface TaskUpdateInput {
+  title?: string;
+  description?: string | null;
+  status?: TaskStatus;
+  priority?: PinPriority;
+  owner_id?: number | null;
+  due_date?: string | null;
+  related_pin_ids?: number[];
+}
+
+export async function listTasks(
+  projectId: number | string,
+  filters?: { status?: TaskStatus; owner_id?: number }
+): Promise<Task[]> {
+  const params = new URLSearchParams();
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.owner_id) params.set("owner_id", String(filters.owner_id));
+  const qs = params.toString();
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/tasks${qs ? `?${qs}` : ""}`);
+  return res.json();
+}
+
+export async function getTask(projectId: number | string, taskId: number | string): Promise<Task> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/tasks/${taskId}`);
+  return res.json();
+}
+
+export async function createTask(projectId: number | string, data: TaskInput): Promise<Task> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/tasks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function updateTask(
+  projectId: number | string,
+  taskId: number | string,
+  data: TaskUpdateInput
+): Promise<Task> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/tasks/${taskId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function deleteTask(projectId: number | string, taskId: number | string): Promise<void> {
+  await fetchWithAuth(`${API_URL}/projects/${projectId}/tasks/${taskId}`, { method: "DELETE" });
+}
+
+export async function listTaskComments(taskId: number | string): Promise<Comment[]> {
+  const res = await fetchWithAuth(`${API_URL}/tasks/${taskId}/comments`);
+  return res.json();
+}
+
+export async function addTaskComment(taskId: number | string, body: string): Promise<Comment> {
+  const res = await fetchWithAuth(`${API_URL}/tasks/${taskId}/comments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+  return res.json();
 }

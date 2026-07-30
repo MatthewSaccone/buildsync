@@ -40,3 +40,10 @@ class JobStatus(str, enum.Enum):
     IN_PROGRESS = "in_progress"
     DONE = "done"
     BLOCKED = "blocked"
+
+
+class TaskStatus(str, enum.Enum):
+    TODO = "todo"
+    IN_PROGRESS = "in_progress"
+    BLOCKED = "blocked"
+    DONE = "done"

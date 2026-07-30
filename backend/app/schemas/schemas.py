@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, computed_field, model_validator
 
-from app.models.enums import UserRole, PinStatus, PinPriority, ProjectRole, JobStatus
+from app.models.enums import UserRole, PinStatus, PinPriority, ProjectRole, JobStatus, TaskStatus
 
 
 # ---- Auth ----
@@ -182,6 +182,7 @@ class PinMaterialOut(BaseModel):
 class AttachmentOut(BaseModel):
     id: int
     pin_id: int | None
+    task_id: int | None
     comment_id: int | None
     file_path: str
     uploaded_by_id: int
@@ -223,7 +224,8 @@ class CommentCreate(BaseModel):
 
 class CommentOut(BaseModel):
     id: int
-    pin_id: int
+    pin_id: int | None
+    task_id: int | None
     author_id: int
     body: str
     created_at: datetime
@@ -456,6 +458,56 @@ class ScheduledJobOut(BaseModel):
     project_address: str | None = None
     assignee_name: str | None = None
     pin_title: str | None = None
+
+    class Config:
+        from_attributes = True
+
+# ---- Tasks ----
+class TaskPinRef(BaseModel):
+    id: int
+    title: str
+    sheet_id: int
+    status: PinStatus
+
+    class Config:
+        from_attributes = True
+
+
+class TaskCreate(BaseModel):
+    title: str
+    description: str | None = None
+    priority: PinPriority = PinPriority.NORMAL
+    owner_id: int | None = None
+    due_date: datetime | None = None
+    related_pin_ids: list[int] = []
+
+
+class TaskUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    status: TaskStatus | None = None
+    priority: PinPriority | None = None
+    owner_id: int | None = None
+    due_date: datetime | None = None
+    related_pin_ids: list[int] | None = None
+
+
+class TaskOut(BaseModel):
+    id: int
+    project_id: int
+    title: str
+    description: str | None
+    status: TaskStatus
+    priority: PinPriority
+    owner_id: int | None
+    owner: UserOut | None
+    due_date: datetime | None
+    created_by_id: int
+    created_at: datetime
+    completed_at: datetime | None
+    comments: list[CommentOut] = []
+    attachments: list[AttachmentOut] = []
+    related_pins: list[TaskPinRef] = []
 
     class Config:
         from_attributes = True

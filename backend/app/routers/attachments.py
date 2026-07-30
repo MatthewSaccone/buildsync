@@ -9,6 +9,7 @@ from app.models.comment import Comment
 from app.models.pin import Pin
 from app.models.project import ProjectMember
 from app.models.sheet import Sheet
+from app.models.task import Task
 from app.models.user import User
 from app.schemas.schemas import AttachmentOut
 
@@ -30,11 +31,28 @@ def _require_pin_membership(db: Session, pin_id: int, user_id: int) -> Pin:
     return pin
 
 
+def _require_task_membership(db: Session, task_id: int, user_id: int) -> Task:
+    task = db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    membership = (
+        db.query(ProjectMember)
+        .filter(ProjectMember.project_id == task.project_id, ProjectMember.user_id == user_id)
+        .first()
+    )
+    if not membership:
+        raise HTTPException(status_code=403, detail="Not a member of this project")
+    return task
+
+
 def _require_comment_membership(db: Session, comment_id: int, user_id: int) -> Comment:
     comment = db.get(Comment, comment_id)
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found")
-    _require_pin_membership(db, comment.pin_id, user_id)
+    if comment.pin_id:
+        _require_pin_membership(db, comment.pin_id, user_id)
+    else:
+        _require_task_membership(db, comment.task_id, user_id)
     return comment
 
 
@@ -59,6 +77,29 @@ def upload_pin_attachment(
 def list_pin_attachments(pin_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     _require_pin_membership(db, pin_id, user.id)
     return db.query(Attachment).filter(Attachment.pin_id == pin_id).order_by(Attachment.uploaded_at).all()
+
+
+@router.post("/tasks/{task_id}/attachments", response_model=AttachmentOut)
+def upload_task_attachment(
+    task_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_task_membership(db, task_id, user.id)
+    stored_path = save_upload(file, IMAGE_EXTENSIONS)
+
+    attachment = Attachment(task_id=task_id, file_path=stored_path, uploaded_by_id=user.id)
+    db.add(attachment)
+    db.commit()
+    db.refresh(attachment)
+    return attachment
+
+
+@router.get("/tasks/{task_id}/attachments", response_model=list[AttachmentOut])
+def list_task_attachments(task_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    _require_task_membership(db, task_id, user.id)
+    return db.query(Attachment).filter(Attachment.task_id == task_id).order_by(Attachment.uploaded_at).all()
 
 
 @router.post("/comments/{comment_id}/attachments", response_model=AttachmentOut)
@@ -92,6 +133,8 @@ def delete_attachment(attachment_id: int, db: Session = Depends(get_db), user: U
 
     if attachment.pin_id:
         _require_pin_membership(db, attachment.pin_id, user.id)
+    elif attachment.task_id:
+        _require_task_membership(db, attachment.task_id, user.id)
     else:
         _require_comment_membership(db, attachment.comment_id, user.id)
 

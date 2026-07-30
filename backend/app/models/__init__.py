@@ -11,6 +11,7 @@ from app.models.password_reset_token import PasswordResetToken
 from app.models.attachment import Attachment
 from app.models.message import DirectMessage
 from app.models.scheduled_job import ScheduledJob
+from app.models.task import Task
 
 __all__ = [
     "User",
@@ -28,4 +29,5 @@ __all__ = [
     "Attachment",
     "DirectMessage",
     "ScheduledJob",
+    "Task",
 ]

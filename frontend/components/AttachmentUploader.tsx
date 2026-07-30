@@ -5,12 +5,14 @@ import { uploadAttachment } from "@/lib/api";
 
 interface Props {
   pinId?: number;
+  taskId?: number;
   commentId?: number;
   onUploaded?: (attachment: any) => void;
 }
 
 export function AttachmentUploader({
   pinId,
+  taskId,
   commentId,
   onUploaded,
 }: Props) {
@@ -31,7 +33,8 @@ export function AttachmentUploader({
       const result = await uploadAttachment(
         file,
         pinId,
-        commentId
+        commentId,
+        taskId
       );
 
       onUploaded?.(result);
