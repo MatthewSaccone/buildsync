@@ -10,6 +10,7 @@ from app.models.refresh_token import RefreshToken
 from app.models.password_reset_token import PasswordResetToken
 from app.models.attachment import Attachment
 from app.models.message import DirectMessage
+from app.models.channel import Channel, ChannelMessage, ChannelRead
 from app.models.scheduled_job import ScheduledJob
 from app.models.task import Task
 from app.models.task_material import TaskMaterial
@@ -29,6 +30,9 @@ __all__ = [
     "PasswordResetToken",
     "Attachment",
     "DirectMessage",
+    "Channel",
+    "ChannelMessage",
+    "ChannelRead",
     "ScheduledJob",
     "Task",
     "TaskMaterial",

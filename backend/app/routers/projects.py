@@ -13,6 +13,7 @@ from app.models.project import Project, ProjectMember
 from app.models.enums import ProjectRole
 from app.models.sheet import Sheet
 from app.models.user import User
+from app.routers.channels import _ensure_general_channel as ensure_general_channel
 from app.schemas.schemas import (
     ProjectCreate,
     ProjectOut,
@@ -48,6 +49,7 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db), user: 
     db.flush()
 
     db.add(ProjectMember(project_id=project.id, user_id=user.id, role=ProjectRole.OWNER))
+    ensure_general_channel(db, project.id, user.id)  # BS-101-1: General channel automatically created
     db.commit()
     db.refresh(project)
     return project

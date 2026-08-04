@@ -265,6 +265,48 @@ class ConversationOut(BaseModel):
         from_attributes = True
 
 
+# ---- Channels ----
+class ChannelCreate(BaseModel):
+    name: str
+
+
+class ChannelRename(BaseModel):
+    name: str
+
+
+class ChannelOut(BaseModel):
+    id: int
+    project_id: int
+    name: str
+    is_general: bool
+    is_archived: bool
+    created_by_id: int
+    created_at: datetime
+    archived_at: datetime | None
+    unread_count: int = 0
+    last_message_at: datetime | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class ChannelMessageCreate(BaseModel):
+    body: str
+
+
+class ChannelMessageOut(BaseModel):
+    id: int
+    channel_id: int
+    sender_id: int
+    body: str
+    task_id: int | None = None
+    created_at: datetime
+    sender: UserOut
+
+    class Config:
+        from_attributes = True
+
+
 # ---- Notifications ----
 class NotificationOut(BaseModel):
     id: int

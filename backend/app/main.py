@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.database import Base, engine
-from app.routers import auth, projects, sheets, pins, comments, notifications, websocket, materials, pin_materials, costs, attachments, messages, schedule, tasks, task_materials
+from app.routers import auth, projects, sheets, pins, comments, notifications, websocket, materials, pin_materials, costs, attachments, messages, schedule, tasks, task_materials, channels
 import app.models  # noqa: F401 ensures all models are registered before create_all
 
 Base.metadata.create_all(bind=engine)
@@ -35,6 +35,7 @@ app.include_router(costs.router)
 app.include_router(attachments.router)
 app.include_router(websocket.router)
 app.include_router(messages.router)
+app.include_router(channels.router)
 app.include_router(schedule.router)
 app.include_router(schedule.my_schedule_router)
 app.include_router(tasks.router)

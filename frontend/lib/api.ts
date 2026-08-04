@@ -544,16 +544,108 @@ export async function sendMessage(
   return res.json();
 }
 
-export async function listGeneralMessages(projectId: string | number): Promise<DirectMessage[]> {
-  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/general-messages`);
+// ==========================================
+// Channels
+// ==========================================
+
+export interface Channel {
+  id: number;
+  project_id: number;
+  name: string;
+  is_general: boolean;
+  is_archived: boolean;
+  created_by_id: number;
+  created_at: string;
+  archived_at: string | null;
+  unread_count: number;
+  last_message_at: string | null;
+}
+
+export interface ChannelMessage {
+  id: number;
+  channel_id: number;
+  sender_id: number;
+  body: string;
+  task_id: number | null;
+  created_at: string;
+  sender: User;
+}
+
+export async function listChannels(
+  projectId: string | number,
+  opts?: { q?: string; includeArchived?: boolean }
+): Promise<Channel[]> {
+  const params = new URLSearchParams();
+  if (opts?.q) params.set("q", opts.q);
+  if (opts?.includeArchived) params.set("include_archived", "true");
+  const qs = params.toString();
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/channels${qs ? `?${qs}` : ""}`);
   return res.json();
 }
 
-export async function sendGeneralMessage(
+export async function createChannel(projectId: string | number, name: string): Promise<Channel> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/channels`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  return res.json();
+}
+
+export async function renameChannel(
   projectId: string | number,
+  channelId: string | number,
+  name: string
+): Promise<Channel> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/channels/${channelId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  return res.json();
+}
+
+export async function archiveChannel(
+  projectId: string | number,
+  channelId: string | number
+): Promise<Channel> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/channels/${channelId}/archive`, {
+    method: "POST",
+  });
+  return res.json();
+}
+
+export async function unarchiveChannel(
+  projectId: string | number,
+  channelId: string | number
+): Promise<Channel> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/channels/${channelId}/unarchive`, {
+    method: "POST",
+  });
+  return res.json();
+}
+
+export async function listChannelMessages(
+  projectId: string | number,
+  channelId: string | number
+): Promise<ChannelMessage[]> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/channels/${channelId}/messages`);
+  return res.json();
+}
+
+export async function searchChannels(
+  projectId: string | number,
+  query: string
+): Promise<Channel[]> {
+  return listChannels(projectId, { q: query });
+}
+
+export async function sendChannelMessage(
+  projectId: string | number,
+  channelId: string | number,
   body: string
-): Promise<DirectMessage> {
-  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/general-messages`, {
+): Promise<ChannelMessage> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/channels/${channelId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ body }),
@@ -568,6 +660,17 @@ export async function deleteConversation(
   await fetchWithAuth(`${API_URL}/projects/${projectId}/messages/${otherUserId}`, {
     method: "DELETE",
   });
+}
+
+// Clears message history with a DM partner but — unlike deleteConversation —
+// is named for what the UI calls it ("Clear chat"). Same endpoint: the
+// conversation itself is derived from project membership, not from message
+// existence, so wiping the thread never removes the person from the list.
+export async function clearConversation(
+  projectId: string | number,
+  otherUserId: string | number
+): Promise<void> {
+  return deleteConversation(projectId, otherUserId);
 }
 
 export async function listMembers(projectId: string | number): Promise<ProjectMember[]> {
