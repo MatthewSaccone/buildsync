@@ -227,6 +227,27 @@ def unarchive_channel(
     return _to_out(db, channel, user.id)
 
 
+@router.delete("/{channel_id}", status_code=204)
+def delete_channel(
+    project_id: int,
+    channel_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_membership(db, project_id, user.id)
+    channel = _get_channel(db, project_id, channel_id)
+
+    if channel.is_general:
+        raise HTTPException(status_code=400, detail="The general channel can't be deleted")
+    if not channel.is_archived:
+        raise HTTPException(status_code=400, detail="Only archived channels can be permanently deleted")
+
+    db.query(ChannelRead).filter(ChannelRead.channel_id == channel.id).delete()
+    db.query(ChannelMessage).filter(ChannelMessage.channel_id == channel.id).delete()
+    db.delete(channel)
+    db.commit()
+
+
 @router.get("/{channel_id}/messages", response_model=list[ChannelMessageOut])
 def get_channel_messages(
     project_id: int,

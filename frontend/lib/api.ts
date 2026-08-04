@@ -544,6 +544,32 @@ export async function sendMessage(
   return res.json();
 }
 
+/** Substring search across every DM thread the current user is part of,
+ * within this project. Returns raw DirectMessage hits (newest first) — the
+ * caller maps each hit's sender/recipient back to a conversation to know
+ * which thread to jump to. */
+export async function searchMessages(
+  projectId: string | number,
+  query: string
+): Promise<DirectMessage[]> {
+  const res = await fetchWithAuth(
+    `${API_URL}/projects/${projectId}/messages/search?q=${encodeURIComponent(query)}`
+  );
+  return res.json();
+}
+
+export interface PresenceSnapshot {
+  online_user_ids: number[];
+}
+
+/** Initial online/offline snapshot for this project's members. Live
+ * updates after this arrive via presence_changed events on the
+ * notification WebSocket. */
+export async function getPresence(projectId: string | number): Promise<PresenceSnapshot> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/presence`);
+  return res.json();
+}
+
 // ==========================================
 // Channels
 // ==========================================
@@ -623,6 +649,15 @@ export async function unarchiveChannel(
     method: "POST",
   });
   return res.json();
+}
+
+export async function deleteChannel(
+  projectId: string | number,
+  channelId: string | number
+): Promise<void> {
+  await fetchWithAuth(`${API_URL}/projects/${projectId}/channels/${channelId}`, {
+    method: "DELETE",
+  });
 }
 
 export async function listChannelMessages(
@@ -1069,7 +1104,7 @@ export function connectProjectSocket(
 }
 
 export function connectNotificationSocket(
-  onNotification: (notif: Notification) => void
+  onNotification: (notif: any) => void
 ): WebSocket | null {
   const token = getToken();
   if (!token) return null;

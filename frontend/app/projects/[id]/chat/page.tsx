@@ -14,10 +14,14 @@ import {
   createChannel,
   renameChannel,
   archiveChannel,
+  unarchiveChannel,
+  deleteChannel,
   listChannelMessages,
   sendChannelMessage,
   listMembers,
   clearConversation,
+  searchMessages,
+  getPresence,
   connectNotificationSocket,
   connectProjectSocket,
   type Project,
@@ -83,8 +87,23 @@ export default function ChatPage() {
   const [channelError, setChannelError] = useState<string | null>(null);
   const [channelNotice, setChannelNotice] = useState<string | null>(null);
 
+  // Archived channels panel
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivedChannels, setArchivedChannels] = useState<Channel[]>([]);
+  const [archivedLoading, setArchivedLoading] = useState(false);
+
   // New DM picker
   const [showNewDm, setShowNewDm] = useState(false);
+
+  // DM search — searches message bodies across all of the user's DM threads
+  // in this project, distinct from the channel-name search box above.
+  const [dmSearch, setDmSearch] = useState("");
+  const [dmSearchResults, setDmSearchResults] = useState<DirectMessage[]>([]);
+  const [dmSearchLoading, setDmSearchLoading] = useState(false);
+
+  // Presence — user ids currently online, kept in sync via WS presence_changed
+  // events after an initial REST snapshot on load.
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<number>>(new Set());
 
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -98,6 +117,20 @@ export default function ChatPage() {
     return listChannels(projectId).then(setChannels);
   }
 
+  function loadArchivedChannels() {
+    setArchivedLoading(true);
+    return listChannels(projectId, { includeArchived: true })
+      .then((all) => setArchivedChannels(all.filter((c) => c.is_archived)))
+      .catch((err) => setChannelError(err?.message ?? "Couldn't load archived channels."))
+      .finally(() => setArchivedLoading(false));
+  }
+
+  function toggleShowArchived() {
+    const next = !showArchived;
+    setShowArchived(next);
+    if (next) loadArchivedChannels();
+  }
+
   useEffect(() => {
     if (!user || !projectId) return;
     Promise.all([
@@ -105,12 +138,14 @@ export default function ChatPage() {
       listConversations(projectId),
       listMembers(projectId),
       listChannels(projectId),
+      getPresence(projectId),
     ])
-      .then(([p, convos, memberList, channelList]) => {
+      .then(([p, convos, memberList, channelList, presence]) => {
         setProject(p);
         setConversations(convos);
         setMembers(memberList);
         setChannels(channelList);
+        setOnlineUserIds(new Set(presence.online_user_ids));
 
         const withParam = searchParams.get("with");
         if (withParam) {
@@ -149,6 +184,22 @@ export default function ChatPage() {
       return () => clearTimeout(t);
     }
   }, [channelNotice]);
+
+  useEffect(() => {
+    if (!user || !projectId) return;
+    if (!dmSearch.trim()) {
+      setDmSearchResults([]);
+      return;
+    }
+    setDmSearchLoading(true);
+    const handle = setTimeout(() => {
+      searchMessages(projectId, dmSearch.trim())
+        .then(setDmSearchResults)
+        .catch((err) => console.error("DM search failed:", err))
+        .finally(() => setDmSearchLoading(false));
+    }, 200);
+    return () => clearTimeout(handle);
+  }, [dmSearch, projectId, user]);
 
   useEffect(() => {
     if (activeTarget === null) return;
@@ -198,6 +249,35 @@ export default function ChatPage() {
   useEffect(() => {
     if (!user) return;
     const ws = connectNotificationSocket((event: any) => {
+      if (event.event === "presence_changed") {
+        setOnlineUserIds((prev) => {
+          const next = new Set(prev);
+          if (event.online) next.add(event.user_id);
+          else next.delete(event.user_id);
+          return next;
+        });
+        return;
+      }
+
+      if (event.event === "messages_read") {
+        // The other participant just read everything we'd sent them up to
+        // read_at — reflect that in the open thread if we're looking at it,
+        // so "Seen" appears live instead of only after a refresh.
+        const readerId: number = event.reader_id;
+        const readAt: string = event.read_at;
+        const active = activeTargetRef.current;
+        if (active?.kind === "dm" && active.id === readerId) {
+          setThread((prev) =>
+            prev.map((m) =>
+              "recipient_id" in m && m.sender_id === user.id && new Date(m.created_at) <= new Date(readAt)
+                ? { ...m, read_at: readAt }
+                : m
+            )
+          );
+        }
+        return;
+      }
+
       if (event.event !== "message_created") return;
       const msg: DirectMessage = event.message;
       const otherId = msg.sender_id === user.id ? msg.recipient_id : msg.sender_id;
@@ -397,9 +477,50 @@ export default function ChatPage() {
         const general = channels.find((c) => c.is_general);
         setActiveTarget(general ? { kind: "channel", id: general.id } : null);
       }
+      // Keep the archived panel in sync if it's open.
+      if (showArchived) loadArchivedChannels();
     } catch (err: any) {
       setChannelError(err?.message ?? "Couldn't archive channel.");
     }
+  }
+
+  async function handleUnarchiveChannel(channelId: number) {
+    try {
+      const channel = await unarchiveChannel(projectId, channelId);
+      setArchivedChannels((prev) => prev.filter((c) => c.id !== channelId));
+      setChannels((prev) => (prev.some((c) => c.id === channel.id) ? prev : [...prev, channel]));
+      setChannelNotice(`"${channel.name}" restored.`);
+    } catch (err: any) {
+      setChannelError(err?.message ?? "Couldn't unarchive channel.");
+    }
+  }
+
+  // Permanent delete is only ever offered from the archived list — the
+  // backend enforces this too (400s if the channel isn't archived), so this
+  // is a genuine safeguard, not just a UI convenience.
+  async function handleDeleteChannel(channelId: number, channelName: string) {
+    if (
+      !confirm(
+        `Permanently delete "#${channelName}"? This deletes all its messages and can't be undone.`
+      )
+    )
+      return;
+    try {
+      await deleteChannel(projectId, channelId);
+      setArchivedChannels((prev) => prev.filter((c) => c.id !== channelId));
+      setChannelNotice(`"${channelName}" permanently deleted.`);
+    } catch (err: any) {
+      setChannelError(err?.message ?? "Couldn't delete channel.");
+    }
+  }
+
+  function openConversationFromHit(hit: DirectMessage) {
+    if (!user) return;
+    const otherId = hit.sender_id === user.id ? hit.recipient_id : hit.sender_id;
+    if (otherId == null) return;
+    setActiveTarget({ kind: "dm", id: otherId });
+    setDmSearch("");
+    setDmSearchResults([]);
   }
 
   // Starting a new DM: a person can only ever have one conversation thread
@@ -428,6 +549,8 @@ export default function ChatPage() {
     if (a.is_general !== b.is_general) return a.is_general ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
+
+  const sortedArchivedChannels = [...archivedChannels].sort((a, b) => a.name.localeCompare(b.name));
 
   const activeConvo =
     activeTarget?.kind === "dm" ? conversations.find((c) => c.user.id === activeTarget.id) : undefined;
@@ -572,23 +695,128 @@ export default function ChatPage() {
                       setRenamingChannelId(c.id);
                       setRenameValue(c.name);
                     }}
+                    className="label-mono"
                     style={{ color: "var(--paper-dim)" }}
                     title="Rename channel"
                   >
-                    ✎
+                    Edit
                   </button>
                   <button
                     type="button"
                     onClick={() => handleArchiveChannel(c.id)}
+                    className="label-mono"
                     style={{ color: "var(--paper-dim)" }}
                     title="Archive channel"
                   >
-                    🗄
+                    Archive
                   </button>
                 </div>
               )}
             </div>
           ))}
+
+          {/* Archived channels toggle + list */}
+          <div className="px-3 pt-2 pb-1">
+            <button
+              type="button"
+              onClick={toggleShowArchived}
+              className="label-mono"
+              style={{ color: "var(--paper-dim)" }}
+            >
+              {showArchived ? "▾ Hide archived channels" : "▸ Show archived channels"}
+            </button>
+          </div>
+
+          {showArchived && (
+            <div className="pb-2">
+              {archivedLoading ? (
+                <p className="px-3 py-1 text-xs" style={{ color: "var(--paper-dim)" }}>
+                  Loading…
+                </p>
+              ) : sortedArchivedChannels.length === 0 ? (
+                <p className="px-3 py-1 text-xs" style={{ color: "var(--paper-dim)" }}>
+                  No archived channels.
+                </p>
+              ) : (
+                sortedArchivedChannels.map((c) => (
+                  <div
+                    key={c.id}
+                    className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
+                    style={{ borderBottom: "1px solid var(--line-soft)" }}
+                  >
+                    <span className="truncate" style={{ color: "var(--paper-dim)" }}>
+                      # {c.name}
+                    </span>
+                    <div className="flex shrink-0 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleUnarchiveChannel(c.id)}
+                        className="label-mono"
+                        style={{ color: "var(--amber)" }}
+                        title="Unarchive channel"
+                      >
+                        Unarchive
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteChannel(c.id, c.name)}
+                        className="label-mono"
+                        style={{ color: "#e08585" }}
+                        title="Permanently delete channel"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          <div className="px-3 pt-3 pb-1">
+            <input
+              type="text"
+              className="field w-full text-sm"
+              placeholder="Search messages…"
+              value={dmSearch}
+              onChange={(e) => setDmSearch(e.target.value)}
+            />
+          </div>
+
+          {dmSearch.trim() && (
+            <div className="px-3 pb-2">
+              {dmSearchLoading ? (
+                <p className="text-xs" style={{ color: "var(--paper-dim)" }}>
+                  Searching…
+                </p>
+              ) : dmSearchResults.length === 0 ? (
+                <p className="text-xs" style={{ color: "var(--paper-dim)" }}>
+                  No messages found.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {dmSearchResults.map((hit) => {
+                    const otherId = hit.sender_id === user.id ? hit.recipient_id : hit.sender_id;
+                    const other = members.find((m) => m.user.id === otherId)?.user;
+                    return (
+                      <button
+                        key={hit.id}
+                        type="button"
+                        onClick={() => openConversationFromHit(hit)}
+                        className="rounded px-2 py-1.5 text-left text-sm"
+                        style={{ background: "var(--ink-2)" }}
+                      >
+                        <p className="truncate font-medium">{other?.full_name ?? "Unknown"}</p>
+                        <p className="truncate label-mono" style={{ color: "var(--paper-dim)" }}>
+                          {hit.body}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center justify-between px-3 pt-3 pb-1">
             <p className="label-mono" style={{ color: "var(--paper-dim)" }}>

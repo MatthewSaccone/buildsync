@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, and_
 from sqlalchemy.orm import Session
 
@@ -77,8 +77,55 @@ def list_conversations(project_id: int, db: Session = Depends(get_db), user: Use
     return conversations
 
 
+# NOTE: this must be declared before /messages/{other_user_id} in file order
+# for readability, though FastAPI would route it correctly either way since
+# other_user_id is typed int and "search" won't match that converter.
+@router.get("/presence")
+def get_presence(project_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Snapshot of which project members are currently online. WS
+    presence_changed events cover updates after the client connects; this
+    covers the initial state on page load."""
+    _require_membership(db, project_id, user.id)
+    member_ids = {
+        m.user_id
+        for m in db.query(ProjectMember).filter(ProjectMember.project_id == project_id).all()
+    }
+    online = manager.online_user_ids() & member_ids
+    return {"online_user_ids": list(online)}
+
+
+@router.get("/messages/search", response_model=list[DirectMessageOut])
+def search_messages(
+    project_id: int,
+    q: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Full-text (substring) search across every DM thread the current user
+    is a participant in, within this project. Used to power the DM search
+    box — results link back to whichever conversation each hit belongs to."""
+    _require_membership(db, project_id, user.id)
+
+    term = f"%{q.strip()}%"
+    if not q.strip():
+        return []
+
+    results = (
+        db.query(DirectMessage)
+        .filter(
+            DirectMessage.project_id == project_id,
+            or_(DirectMessage.sender_id == user.id, DirectMessage.recipient_id == user.id),
+            DirectMessage.body.ilike(term),
+        )
+        .order_by(DirectMessage.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    return results
+
+
 @router.get("/messages/{other_user_id}", response_model=list[DirectMessageOut])
-def get_thread(
+async def get_thread(
     project_id: int,
     other_user_id: int,
     db: Session = Depends(get_db),
@@ -109,6 +156,17 @@ def get_thread(
         for m in unread:
             m.read_at = now
         db.commit()
+        # Let the original sender know their messages were just seen, so
+        # their open thread updates live instead of only on next refresh.
+        await manager.send_to_user(
+            other_user_id,
+            {
+                "event": "messages_read",
+                "reader_id": user.id,
+                "project_id": project_id,
+                "read_at": now.isoformat(),
+            },
+        )
 
     return thread
 
@@ -187,4 +245,3 @@ def delete_thread(
         ),
     ).delete(synchronize_session=False)
     db.commit()
-    
