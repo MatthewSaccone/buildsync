@@ -221,9 +221,15 @@ export interface Attachment {
   pin_id: number | null;
   task_id: number | null;
   comment_id: number | null;
+  message_id: number | null;
+  channel_message_id: number | null;
   file_path: string;
+  original_filename: string | null;
+  content_type: string | null;
   uploaded_by_id: number;
   uploaded_at: string;
+  url: string;
+  is_image: boolean;
 }
 
 export interface OverduePin {
@@ -510,6 +516,7 @@ export interface DirectMessage {
   created_at: string;
   read_at: string | null;
   sender: User;
+  attachments: Attachment[];
 }
 
 export interface Conversation {
@@ -595,6 +602,7 @@ export interface ChannelMessage {
   task_id: number | null;
   created_at: string;
   sender: User;
+  attachments: Attachment[];
 }
 
 export async function listChannels(
@@ -1073,6 +1081,56 @@ export async function listCommentAttachments(commentId: number | string): Promis
 export async function deleteAttachment(attachmentId: number | string): Promise<void> {
   await fetchWithAuth(`${API_URL}/attachments/${attachmentId}`, { method: "DELETE" });
 }
+
+/** Upload a file to a DM (BS-103). The message must already exist — send
+ * the text (can be empty) first, then attach the file to the returned id. */
+export async function uploadMessageAttachment(messageId: number | string, file: File): Promise<Attachment> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/attachments`, {
+    method: "POST",
+    body: formData,
+  });
+  return res.json();
+}
+
+/** Upload a file to a channel message (BS-103). */
+export async function uploadChannelMessageAttachment(
+  channelMessageId: number | string,
+  file: File
+): Promise<Attachment> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetchWithAuth(`${API_URL}/channel-messages/${channelMessageId}/attachments`, {
+    method: "POST",
+    body: formData,
+  });
+  return res.json();
+}
+
+/** Downloads the attachment via the authenticated /download endpoint and
+ * saves it locally under its original filename (BS-103-4). Plain <a href>
+ * won't work here since the endpoint requires an auth header. */
+export async function downloadAttachment(attachment: Attachment): Promise<void> {
+  const res = await fetch(`${API_URL}/attachments/${attachment.id}/download`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) throw new ApiError(res.status, "Failed to download attachment");
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = attachment.original_filename || attachment.file_path.split("/").pop() || "download";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
+/** Extensions accepted for chat uploads, kept in sync with the backend's
+ * CHAT_ATTACHMENT_EXTENSIONS (images, PDFs, common office documents). */
+export const CHAT_ATTACHMENT_ACCEPT =
+  ".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv";
 
 /** The backend stores file_path as a disk path (e.g. "app/static/uploads/xyz.jpg");
  * it's served back out under /static/uploads/<filename>. */

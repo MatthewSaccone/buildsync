@@ -50,6 +50,7 @@ class ChannelMessage(Base):
 
     channel = relationship("Channel", back_populates="messages")
     sender = relationship("User", foreign_keys=[sender_id])
+    attachments = relationship("Attachment", back_populates="channel_message", cascade="all, delete-orphan")
 
 
 class ChannelRead(Base):

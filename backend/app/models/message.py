@@ -29,3 +29,4 @@ class DirectMessage(Base):
 
     sender = relationship("User", foreign_keys=[sender_id])
     recipient = relationship("User", foreign_keys=[recipient_id])
+    attachments = relationship("Attachment", back_populates="message", cascade="all, delete-orphan")

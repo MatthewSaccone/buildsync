@@ -184,12 +184,27 @@ class AttachmentOut(BaseModel):
     pin_id: int | None
     task_id: int | None
     comment_id: int | None
+    message_id: int | None = None
+    channel_message_id: int | None = None
     file_path: str
+    original_filename: str | None = None
+    content_type: str | None = None
     uploaded_by_id: int
     uploaded_at: datetime
 
     class Config:
         from_attributes = True
+
+    @computed_field
+    @property
+    def url(self) -> str:
+        return f"/static/uploads/{os.path.basename(self.file_path)}"
+
+    @computed_field
+    @property
+    def is_image(self) -> bool:
+        ext = os.path.splitext(self.file_path)[1].lower()
+        return ext in {".png", ".jpg", ".jpeg", ".webp"}
 
 
 class PinOut(BaseModel):
@@ -251,6 +266,7 @@ class DirectMessageOut(BaseModel):
     created_at: datetime
     read_at: datetime | None
     sender: UserOut
+    attachments: list[AttachmentOut] = []
 
     class Config:
         from_attributes = True
@@ -302,6 +318,7 @@ class ChannelMessageOut(BaseModel):
     task_id: int | None = None
     created_at: datetime
     sender: UserOut
+    attachments: list[AttachmentOut] = []
 
     class Config:
         from_attributes = True

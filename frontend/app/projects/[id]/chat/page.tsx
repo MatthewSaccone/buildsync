@@ -24,12 +24,18 @@ import {
   getPresence,
   connectNotificationSocket,
   connectProjectSocket,
+  uploadMessageAttachment,
+  uploadChannelMessageAttachment,
+  downloadAttachment,
+  attachmentUrl,
+  CHAT_ATTACHMENT_ACCEPT,
   type Project,
   type Conversation,
   type DirectMessage,
   type ProjectMember,
   type Channel,
   type ChannelMessage,
+  type Attachment,
 } from "@/lib/api";
 
 type ActiveTarget = { kind: "channel"; id: number } | { kind: "dm"; id: number } | null;
@@ -108,6 +114,12 @@ export default function ChatPage() {
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const threadEndRef = useRef<HTMLDivElement>(null);
+
+  // Chat attachments (BS-103) — a file picked but not yet sent, and the
+  // per-message upload/error state keyed by message id for the send flow.
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -358,18 +370,36 @@ export default function ChatPage() {
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
-    if (activeTarget === null || !body.trim()) return;
+    if (activeTarget === null) return;
+    const trimmedBody = body.trim();
+    const fileToSend = pendingFile;
+    if (!trimmedBody && !fileToSend) return;
     setSending(true);
+    setAttachError(null);
     try {
-      if (activeTarget.kind === "channel") {
-        const msg = await sendChannelMessage(projectId, activeTarget.id, body.trim());
-        setThread((prev) => [...prev, msg]);
-      } else {
-        const msg = await sendMessage(projectId, activeTarget.id, body.trim());
-        setThread((prev) => [...prev, msg]);
+      let msg: ThreadMessage =
+        activeTarget.kind === "channel"
+          ? await sendChannelMessage(projectId, activeTarget.id, trimmedBody)
+          : await sendMessage(projectId, activeTarget.id, trimmedBody);
+
+      if (fileToSend) {
+        try {
+          const attachment =
+            activeTarget.kind === "channel"
+              ? await uploadChannelMessageAttachment(msg.id, fileToSend)
+              : await uploadMessageAttachment(msg.id, fileToSend);
+          msg = { ...msg, attachments: [...(msg.attachments ?? []), attachment] };
+        } catch (err: any) {
+          // Message already sent — surface the upload failure without losing the message.
+          setAttachError(err?.message ?? "Failed to upload attachment.");
+        }
+      }
+
+      setThread((prev) => [...prev, msg]);
+      if (activeTarget.kind === "dm") {
         setConversations((prev) =>
           prev
-            .map((c) => (c.user.id === activeTarget.id ? { ...c, last_message: msg } : c))
+            .map((c) => (c.user.id === activeTarget.id ? { ...c, last_message: msg as DirectMessage } : c))
             .sort((a, b) => {
               const at = a.last_message ? new Date(a.last_message.created_at).getTime() : 0;
               const bt = b.last_message ? new Date(b.last_message.created_at).getTime() : 0;
@@ -379,8 +409,36 @@ export default function ChatPage() {
       }
       setBody("");
       setMentionQuery(null);
+      setPendingFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     } finally {
       setSending(false);
+    }
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    setAttachError(null);
+    if (!file) return;
+    if (file.size > 25 * 1024 * 1024) {
+      setAttachError("File is too large (25MB max).");
+      e.target.value = "";
+      return;
+    }
+    setPendingFile(file);
+  }
+
+  function clearPendingFile() {
+    setPendingFile(null);
+    setAttachError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  async function handleDownloadAttachment(attachment: Attachment) {
+    try {
+      await downloadAttachment(attachment);
+    } catch (err: any) {
+      setAttachError(err?.message ?? "Failed to download attachment.");
     }
   }
 
@@ -945,7 +1003,44 @@ export default function ChatPage() {
                                 {m.sender.full_name}
                               </p>
                             )}
-                            <p>{m.body}</p>
+                            {m.body && <p>{m.body}</p>}
+                            {m.attachments && m.attachments.length > 0 && (
+                              <div className={`flex flex-col gap-1.5 ${m.body ? "mt-2" : ""}`}>
+                                {m.attachments.map((a) =>
+                                  a.is_image ? (
+                                    <a
+                                      key={a.id}
+                                      href={attachmentUrl(a)}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="block overflow-hidden rounded"
+                                    >
+                                      <img
+                                        src={attachmentUrl(a)}
+                                        alt={a.original_filename ?? "attachment"}
+                                        className="max-h-48 max-w-full rounded object-cover"
+                                      />
+                                    </a>
+                                  ) : (
+                                    <button
+                                      key={a.id}
+                                      type="button"
+                                      onClick={() => handleDownloadAttachment(a)}
+                                      className="flex items-center gap-2 rounded px-2 py-1.5 text-left text-xs"
+                                      style={{
+                                        background: mine ? "rgba(11,21,33,0.15)" : "var(--ink-3, #1a2531)",
+                                      }}
+                                      title="Download"
+                                    >
+                                      <span>📎</span>
+                                      <span className="truncate">
+                                        {a.original_filename ?? a.file_path.split("/").pop()}
+                                      </span>
+                                    </button>
+                                  )
+                                )}
+                              </div>
+                            )}
                             <p
                               className="label-mono mt-1"
                               style={{ color: mine ? "rgba(11,21,33,0.6)" : "var(--paper-dim)" }}
@@ -961,38 +1056,81 @@ export default function ChatPage() {
                 )}
               </div>
 
-              <form onSubmit={handleSend} className="relative flex gap-2 p-3" style={{ borderTop: "1px solid var(--line)" }}>
-                {mentionCandidates.length > 0 && (
-                  <div className="panel absolute bottom-full left-3 mb-1 w-56 overflow-hidden">
-                    {mentionCandidates.map((m) => (
-                      <button
-                        key={m.user.id}
-                        type="button"
-                        onClick={() => insertMention(m.user.full_name)}
-                        className="block w-full px-3 py-2 text-left text-sm hover:bg-white/5"
-                      >
-                        {m.user.full_name}
-                      </button>
-                    ))}
+              <form onSubmit={handleSend} className="flex flex-col gap-2 p-3" style={{ borderTop: "1px solid var(--line)" }}>
+                {attachError && (
+                  <p className="text-xs" style={{ color: "var(--red)" }}>
+                    {attachError}
+                  </p>
+                )}
+                {pendingFile && (
+                  <div
+                    className="flex items-center justify-between gap-2 rounded px-2 py-1.5 text-xs"
+                    style={{ background: "var(--ink-2)" }}
+                  >
+                    <span className="truncate">📎 {pendingFile.name}</span>
+                    <button
+                      type="button"
+                      onClick={clearPendingFile}
+                      className="shrink-0 label-mono"
+                      style={{ color: "var(--paper-dim)" }}
+                      title="Remove attachment"
+                    >
+                      ✕
+                    </button>
                   </div>
                 )}
-                <textarea
-                  ref={textareaRef}
-                  className="field flex-1"
-                  rows={1}
-                  placeholder="Message… use @ to loop someone in"
-                  value={body}
-                  onChange={(e) => handleBodyChange(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend(e);
-                    }
-                  }}
-                />
-                <button type="submit" disabled={sending || !body.trim()} className="btn-primary shrink-0">
-                  {sending ? "…" : "Send"}
-                </button>
+                <div className="relative flex gap-2">
+                  {mentionCandidates.length > 0 && (
+                    <div className="panel absolute bottom-full left-3 mb-1 w-56 overflow-hidden">
+                      {mentionCandidates.map((m) => (
+                        <button
+                          key={m.user.id}
+                          type="button"
+                          onClick={() => insertMention(m.user.full_name)}
+                          className="block w-full px-3 py-2 text-left text-sm hover:bg-white/5"
+                        >
+                          {m.user.full_name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={CHAT_ATTACHMENT_ACCEPT}
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="btn-ghost shrink-0"
+                    title="Attach a file"
+                  >
+                    📎
+                  </button>
+                  <textarea
+                    ref={textareaRef}
+                    className="field flex-1"
+                    rows={1}
+                    placeholder="Message… use @ to loop someone in"
+                    value={body}
+                    onChange={(e) => handleBodyChange(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSend(e);
+                      }
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={sending || (!body.trim() && !pendingFile)}
+                    className="btn-primary shrink-0"
+                  >
+                    {sending ? "…" : "Send"}
+                  </button>
+                </div>
               </form>
             </>
           )}
