@@ -1,46 +1,428 @@
-# BuildSync — Backend Scaffold
+# Buildsync
 
-A FastAPI backend for a project-communication tool aimed at architects, custom
-home builders, and trades/contractors. Core idea: instead of back-and-forth
-messaging, issues live as **pins on a plan or job-site photo**, each with its
-own threaded comments, status, priority, and assigned trade.
+> The construction project management platform that connects teams, tasks, communication, documents, and project data in one unified workspace.
 
-## Data model
+![Buildsync Banner](./assets/banner.png)
 
-- **User** — has a role (architect, builder, GC, electrician, plumber, etc.)
-- **Project** — a job; has members with roles (owner/admin/member/viewer)
-- **Sheet** — an uploaded plan page or job-site photo, versioned
-- **Pin** — an (x, y) location on a sheet with a title, status
-  (open/in_progress/blocked/resolved/verified), priority, and optional trade
-  + assignee
-- **Comment** — threaded replies scoped to a single pin
+## 🚧 Overview
 
-This structure means every conversation is tied to a specific spot on a
-specific sheet, with a clear owner and status — instead of a flat chat log
-where issues get lost.
+Construction projects are often managed across disconnected tools — spreadsheets for costs, messaging apps for communication, PDFs for plans, and separate systems for scheduling and documentation.
 
-## Running it
+**Buildsync brings everything together into one centralized workspace built specifically for architects, builders, contractors, and construction teams.**
+
+Instead of losing important conversations in chat threads, Buildsync connects discussions and tasks directly to the project itself — whether that is a plan sheet, job-site photo, task, or project milestone.
+
+The goal is simple:
+
+**Make construction projects easier to coordinate, track, and complete.**
+
+---
+
+# ✨ Features
+
+## 📌 Project Pins & Issue Tracking
+
+Keep project conversations tied to the exact location where they matter.
+
+- Drop pins directly onto plans or job-site images
+- Assign issues to specific trades or team members
+- Track status:
+  - Open
+  - In Progress
+  - Blocked
+  - Resolved
+  - Verified
+- Add threaded comments
+- Connect issues to project tasks
+
+This replaces scattered conversations with location-based project intelligence.
+
+---
+
+## ✅ Task Management
+
+A construction-focused task management system similar to Jira.
+
+Each task supports:
+
+- Task owner
+- Due dates
+- Priority levels
+- Status tracking
+- Comments
+- Photos
+- Attachments
+- Related project pins
+
+Teams can clearly see:
+
+> Who owns what, when it is due, and what needs attention.
+
+---
+
+## 📅 Project Scheduling
+
+Manage project timelines directly inside Buildsync.
+
+Features:
+
+- Project calendar
+- Milestones
+- Important deadlines
+- Schedule visibility across the team
+
+---
+
+## 💬 Team Communication
+
+Keep all project communication in one place.
+
+Features:
+
+- Project-wide chat
+- Direct messaging
+- Task-related conversations
+- Notifications
+- Assignment updates
+
+When team members are assigned work, they can immediately access the related task or issue.
+
+---
+
+## 📄 Project Documentation
+
+Centralize project files and documentation.
+
+Supports:
+
+- Plan sheets
+- Job-site photos
+- Attachments
+- Project documents
+- Versioned files
+
+---
+
+## 💰 Cost Management
+
+Track project expenses and financial information.
+
+Features:
+
+- Material costs
+- Project expenses
+- Cost visibility
+- Organized project budgeting
+
+---
+
+## 👥 Team Management
+
+Manage everyone involved in a project.
+
+Supports:
+
+- Architects
+- General contractors
+- Builders
+- Trades
+- Project members
+
+Roles include:
+
+- Owner
+- Admin
+- Member
+- Viewer
+
+---
+
+# 🏗️ Core Data Model
+
+## User
+
+Represents a project participant.
+
+Examples:
+
+- Architect
+- Builder
+- General contractor
+- Electrician
+- Plumber
+- Other trades
+
+---
+
+## Project
+
+A construction job containing:
+
+- Members
+- Sheets
+- Tasks
+- Costs
+- Conversations
+- Documentation
+
+---
+
+## Sheet
+
+Represents:
+
+- Uploaded construction plans
+- Blueprints
+- Job-site photos
+
+Sheets are versioned to maintain project history.
+
+---
+
+## Pin
+
+A location-based issue attached to a sheet.
+
+Contains:
+
+- Position (x, y coordinates)
+- Title
+- Description
+- Status
+- Priority
+- Trade
+- Assignee
+
+---
+
+## Task
+
+A project action item.
+
+Contains:
+
+- Owner
+- Due date
+- Priority
+- Status
+- Comments
+- Attachments
+- Related pins
+
+---
+
+## Comment
+
+Threaded communication attached to:
+
+- Pins
+- Tasks
+- Project discussions
+
+---
+
+# 🛠️ Tech Stack
+
+## Frontend
+
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
+
+## Backend
+
+- FastAPI
+- Python
+- SQLAlchemy
+- SQLite / PostgreSQL
+
+## Infrastructure
+
+- REST APIs
+- JWT Authentication
+- Uvicorn
+- GitHub
+
+---
+
+# 📂 Project Structure
+
+```text
+buildsync/
+│
+├── frontend/
+│   ├── app/
+│   ├── components/
+│   ├── lib/
+│   └── public/
+│
+├── backend/
+│   ├── app/
+│   ├── models/
+│   ├── routes/
+│   ├── services/
+│   └── database/
+│
+└── README.md
+```
+
+---
+
+# 🚀 Running Buildsync Locally
+
+## Backend Setup
 
 ```bash
 cd backend
+
 pip install -r requirements.txt
+
 uvicorn app.main:app --reload
 ```
 
-Visit `http://localhost:8000/docs` for interactive API docs (Swagger UI).
+Backend runs at:
 
-By default it uses SQLite (`buildsync.db`) so there's zero setup to try it.
-For production, set `DATABASE_URL` in a `.env` file to a Postgres URL.
+```
+http://localhost:8000
+```
 
-## API flow (tested working)
+API documentation:
 
-1. `POST /auth/signup` → `POST /auth/login` (returns JWT)
-2. `POST /projects` → create a project (creator becomes owner)
-3. `POST /projects/{id}/members` → invite architects/trades onto the job
-4. `POST /projects/{id}/sheets` → upload a plan page or photo (multipart)
-5. `POST /sheets/{id}/pins` → drop a pin with a location + title + trade
-6. `POST /pins/{id}/comments` → thread discussion on that specific issue
-7. `PATCH /sheets/{sheet_id}/pins/{pin_id}` → update status (open → resolved)
-8. `GET /sheets/{id}/pins?status=open&trade=electrician` → filter the punch
-   list by trade or status — this is the "who owes what" view
+```
+http://localhost:8000/docs
+```
 
+---
+
+## Frontend Setup
+
+```bash
+cd frontend
+
+npm install
+
+npm run dev
+```
+
+Frontend runs at:
+
+```
+http://localhost:3000
+```
+
+---
+
+# 🔄 Current API Workflow
+
+Example project workflow:
+
+1. Create an account
+
+```
+POST /auth/signup
+```
+
+2. Login and receive JWT authentication
+
+```
+POST /auth/login
+```
+
+3. Create a project
+
+```
+POST /projects
+```
+
+4. Add team members
+
+```
+POST /projects/{id}/members
+```
+
+5. Upload plans or site photos
+
+```
+POST /projects/{id}/sheets
+```
+
+6. Create project pins
+
+```
+POST /sheets/{id}/pins
+```
+
+7. Start issue discussions
+
+```
+POST /pins/{id}/comments
+```
+
+8. Update issue status
+
+```
+PATCH /sheets/{sheet_id}/pins/{pin_id}
+```
+
+9. Filter outstanding work
+
+```
+GET /sheets/{id}/pins?status=open&trade=electrician
+```
+
+---
+
+# 🛣️ Roadmap
+
+## Completed
+
+✅ Project Dashboard  
+✅ Project Scheduling / Calendar  
+✅ Task Management  
+✅ Project Pins  
+✅ Team Management  
+✅ Project Chat  
+✅ Direct Messaging  
+✅ Notifications  
+✅ Cost Tracking  
+✅ File Attachments  
+
+---
+
+## Upcoming
+
+⬜ AI construction assistant  
+⬜ Automated project reporting  
+⬜ Mobile application  
+⬜ Contractor/vendor management  
+⬜ Advanced analytics  
+⬜ Document intelligence  
+⬜ Automated progress tracking  
+
+---
+
+# 🎯 Vision
+
+Buildsync aims to become the operating system for construction projects.
+
+By combining communication, scheduling, documentation, and project management into one platform, Buildsync helps construction teams reduce delays, improve accountability, and complete projects more efficiently.
+
+---
+
+# 🤝 Contributing
+
+Buildsync is currently under active development.
+
+Future contributors will be able to:
+
+- Submit feature requests
+- Report bugs
+- Improve documentation
+- Add new integrations
+
+---
+
+# 📄 License
+
+MIT License
