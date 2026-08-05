@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, EmailStr, computed_field, model_validator
 

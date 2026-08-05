@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone, timezone
 
 from sqlalchemy import String, DateTime, ForeignKey, Boolean, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -19,6 +19,6 @@ class Notification(Base):
     pin_id: Mapped[int | None] = mapped_column(ForeignKey("pins.id"), nullable=True)
     task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"), nullable=True)
     read: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
 
     user = relationship("User", foreign_keys=[user_id])

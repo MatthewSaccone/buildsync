@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone, timezone
 
 from sqlalchemy import DateTime, ForeignKey, Numeric, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -21,7 +21,7 @@ class TaskMaterial(Base):
     material_variant_id: Mapped[int] = mapped_column(ForeignKey("material_variants.id"))
     quantity: Mapped[float] = mapped_column(Float, nullable=False, default=1)
     unit_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
 
     task = relationship("Task", back_populates="materials")
     material_variant = relationship("MaterialVariant")

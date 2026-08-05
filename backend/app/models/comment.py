@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone, timezone
 
 from sqlalchemy import Text, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -16,7 +16,7 @@ class Comment(Base):
     task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"), nullable=True)
     author_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     body: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
 
     pin = relationship("Pin", back_populates="comments")
     task = relationship("Task", back_populates="comments")
