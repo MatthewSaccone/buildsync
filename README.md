@@ -137,6 +137,117 @@ Roles include:
 
 ---
 
+# 🏗️ System Architecture
+
+The Buildsync platform follows a modern full-stack architecture with a Next.js frontend, FastAPI backend, relational database layer, and cloud-ready storage/services.
+
+```mermaid
+flowchart TB
+
+%% USERS
+A[👷 Construction Teams<br/>
+Architects<br/>
+Builders<br/>
+Trades<br/>
+Project Managers]
+
+%% FRONTEND
+B[🌐 Next.js Frontend<br/>
+React + TypeScript<br/>
+Tailwind CSS]
+
+C[Frontend Features<br/>
+- Dashboard<br/>
+- Projects<br/>
+- Tasks<br/>
+- Calendar<br/>
+- Chat<br/>
+- Pins<br/>
+- Costs<br/>
+- Team Management]
+
+%% API
+D[⚡ FastAPI Backend<br/>
+REST API Layer]
+
+E[Authentication Service<br/>
+JWT Tokens<br/>
+User Sessions]
+
+F[Project Service<br/>
+Projects<br/>
+Members<br/>
+Permissions]
+
+G[Task Service<br/>
+Tasks<br/>
+Assignments<br/>
+Statuses]
+
+H[Communication Service<br/>
+Chat<br/>
+Direct Messages<br/>
+Notifications]
+
+I[Document Service<br/>
+Sheets<br/>
+Photos<br/>
+Attachments]
+
+J[Pin Service<br/>
+Plan Locations<br/>
+Issues<br/>
+Comments]
+
+%% DATABASE
+K[(🗄️ Database<br/>
+SQLite / PostgreSQL)]
+
+L[Database Models<br/>
+Users<br/>
+Projects<br/>
+Sheets<br/>
+Pins<br/>
+Tasks<br/>
+Messages<br/>
+Comments]
+
+%% STORAGE
+M[☁️ File Storage<br/>
+Plans<br/>
+Images<br/>
+Attachments]
+
+%% FLOW
+
+A --> B
+
+B --> C
+
+C --> D
+
+D --> E
+D --> F
+D --> G
+D --> H
+D --> I
+D --> J
+
+E --> K
+F --> K
+G --> K
+H --> K
+I --> K
+J --> K
+
+K --> L
+
+I --> M
+
+M --> D
+
+---
+
 # 🏗️ Core Data Model
 
 ## User
