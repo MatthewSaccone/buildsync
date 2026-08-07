@@ -20,6 +20,8 @@ from app.models.password_reset_token import PasswordResetToken
 from app.schemas.schemas import (
     UserCreate,
     UserOut,
+    UserUpdate,
+    PasswordChange,
     TokenPair,
     RefreshRequest,
     PasswordResetRequest,
@@ -48,6 +50,39 @@ def _issue_token_pair(db: Session, user: User) -> TokenPair:
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)):
     return user
+
+
+@router.patch("/me", response_model=UserOut)
+def update_me(
+    payload: UserUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(user, field, value)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.post("/change-password", status_code=200)
+def change_password(
+    payload: PasswordChange,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not verify_password(payload.current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    user.hashed_password = hash_password(payload.new_password)
+
+    # Same reasoning as the forgot-password flow: revoke every other
+    # session's refresh token once the password changes.
+    db.query(RefreshToken).filter(RefreshToken.user_id == user.id, RefreshToken.revoked == False).update(  # noqa: E712
+        {"revoked": True}
+    )
+    db.commit()
+    return {"detail": "Password updated."}
 
 
 @router.get("/lookup", response_model=UserOut)

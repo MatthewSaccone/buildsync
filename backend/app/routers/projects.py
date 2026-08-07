@@ -17,6 +17,7 @@ from app.routers.channels import _ensure_general_channel as ensure_general_chann
 from app.schemas.schemas import (
     ProjectCreate,
     ProjectOut,
+    ProjectUpdate,
     ProjectMemberAdd,
     ProjectMemberOut,
     ProjectMemberRoleUpdate,
@@ -71,6 +72,35 @@ def get_project(project_id: int, db: Session = Depends(get_db), user: User = Dep
     project = db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    return project
+
+
+@router.patch("/{project_id}", response_model=ProjectOut)
+def update_project(
+    project_id: int,
+    payload: ProjectUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    membership = _require_membership(db, project_id, user.id)
+    if membership.role not in (ProjectRole.OWNER, ProjectRole.ADMIN):
+        raise HTTPException(status_code=403, detail="Only owners/admins can edit project details")
+
+    project = db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    data = payload.model_dump(exclude_unset=True)
+    if "name" in data:
+        name = (data["name"] or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Project name can't be empty")
+        data["name"] = name
+
+    for field, value in data.items():
+        setattr(project, field, value)
+    db.commit()
+    db.refresh(project)
     return project
 
 

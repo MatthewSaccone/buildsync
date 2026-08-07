@@ -486,6 +486,28 @@ export async function confirmPasswordReset(token: string, new_password: string) 
   return res.json();
 }
 
+export async function updateProfile(data: {
+  full_name?: string;
+  company_name?: string | null;
+  role?: UserRole;
+  phone?: string | null;
+}): Promise<User> {
+  const res = await fetchWithAuth(`${API_URL}/auth/me`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function changePassword(current_password: string, new_password: string): Promise<void> {
+  await fetchWithAuth(`${API_URL}/auth/change-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ current_password, new_password }),
+  });
+}
+
 // ==========================================
 // Projects & Dashboard API
 // ==========================================

@@ -52,9 +52,26 @@ class PasswordResetConfirm(BaseModel):
     new_password: str
 
 
+class UserUpdate(BaseModel):
+    full_name: str | None = None
+    company_name: str | None = None
+    role: UserRole | None = None
+    phone: str | None = None
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+
 # ---- Projects ----
 class ProjectCreate(BaseModel):
     name: str
+    address: str | None = None
+
+
+class ProjectUpdate(BaseModel):
+    name: str | None = None
     address: str | None = None
 
 
