@@ -84,7 +84,7 @@ export default function Topbar() {
       className="sticky top-0 z-30 flex items-center justify-between px-5 py-3"
       style={{ background: "var(--ink-2)", borderBottom: "1px solid var(--line)" }}
     >
-      <Link href="/projects" className="flex items-center gap-2">
+      <Link href="/dashboard" className="flex items-center gap-2">
         <span
           className="flex h-7 w-7 items-center justify-center rounded-sm"
           style={{ background: "var(--amber)", color: "#ffffff" }}
@@ -101,6 +101,9 @@ export default function Topbar() {
 
       {user && (
         <div className="flex items-center gap-4">
+          <Link href="/projects" className="label-mono hidden sm:inline" style={{ color: "var(--paper-dim)" }}>
+            Projects
+          </Link>
           <Link href="/materials" className="label-mono hidden sm:inline" style={{ color: "var(--paper-dim)" }}>
             Materials
           </Link>

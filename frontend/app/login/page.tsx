@@ -51,7 +51,7 @@ export default function LoginPage() {
         password,
       });
       await refreshUser();
-      router.push("/projects");
+      router.push("/dashboard");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
     } finally {
