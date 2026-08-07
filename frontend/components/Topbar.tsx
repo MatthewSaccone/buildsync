@@ -12,7 +12,6 @@ import {
   type Notification,
 } from "@/lib/api";
 import { showDesktopNotification } from "@/lib/desktopNotifications";
-import NotificationSettingsPanel from "@/components/NotificationSettingsPanel";
 
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -108,6 +107,9 @@ export default function Topbar() {
           <Link href="/schedule" className="label-mono hidden sm:inline" style={{ color: "var(--paper-dim)" }}>
             Schedule
           </Link>
+          <Link href="/settings" className="label-mono hidden sm:inline" style={{ color: "var(--paper-dim)" }}>
+            Settings
+          </Link>
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setOpen((v) => !v)}
@@ -187,22 +189,6 @@ export default function Topbar() {
                   ))}
                 </div>
               </div>
-            )}
-          </div>
-
-          <div className="relative" ref={settingsRef}>
-            {settingsOpen && (
-              <NotificationSettingsPanel
-                onClose={() => {
-                  setSettingsOpen(false);
-                  // Refresh the cached desktop-enabled flag in case it changed.
-                  getNotificationSettings()
-                    .then((s) => {
-                      desktopEnabledRef.current = s.desktop_enabled;
-                    })
-                    .catch(() => {});
-                }}
-              />
             )}
           </div>
 

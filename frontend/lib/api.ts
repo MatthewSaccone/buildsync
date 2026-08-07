@@ -531,6 +531,18 @@ export async function getProject(id: string | number): Promise<Project> {
   return res.json();
 }
 
+export async function updateProject(
+  id: string | number,
+  data: { name?: string; address?: string | null }
+): Promise<Project> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
 export async function getDashboard(projectId: string | number): Promise<DashboardData> {
   const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/dashboard`);
   return res.json();
