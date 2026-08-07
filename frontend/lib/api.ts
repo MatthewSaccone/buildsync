@@ -63,6 +63,13 @@ export interface Notification {
   created_at: string;
 }
 
+export interface NotificationSettings {
+  notify_on_message: boolean;
+  notify_on_mention: boolean;
+  notify_on_task_assignment: boolean;
+  desktop_enabled: boolean;
+}
+
 export interface MaterialVariant {
   id: number;
   material_id: number;
@@ -592,6 +599,7 @@ export interface Channel {
   archived_at: string | null;
   unread_count: number;
   last_message_at: string | null;
+  muted: boolean;
 }
 
 export interface ChannelMessage {
@@ -666,6 +674,26 @@ export async function deleteChannel(
   await fetchWithAuth(`${API_URL}/projects/${projectId}/channels/${channelId}`, {
     method: "DELETE",
   });
+}
+
+export async function muteChannel(
+  projectId: string | number,
+  channelId: string | number
+): Promise<{ channel_id: number; muted: boolean }> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/channels/${channelId}/mute`, {
+    method: "POST",
+  });
+  return res.json();
+}
+
+export async function unmuteChannel(
+  projectId: string | number,
+  channelId: string | number
+): Promise<{ channel_id: number; muted: boolean }> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/channels/${channelId}/mute`, {
+    method: "DELETE",
+  });
+  return res.json();
 }
 
 export async function listChannelMessages(
@@ -1035,6 +1063,22 @@ export async function markAllNotificationsRead(): Promise<void> {
   });
 }
 
+export async function getNotificationSettings(): Promise<NotificationSettings> {
+  const res = await fetchWithAuth(`${API_URL}/notifications/settings`);
+  return res.json();
+}
+
+export async function updateNotificationSettings(
+  payload: Partial<NotificationSettings>
+): Promise<NotificationSettings> {
+  const res = await fetchWithAuth(`${API_URL}/notifications/settings`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
 // ==========================================
 // Attachments API
 // ==========================================
@@ -1162,7 +1206,7 @@ export function connectProjectSocket(
 }
 
 export function connectNotificationSocket(
-  onNotification: (notif: any) => void
+  onNotification: (notif: Notification) => void
 ): WebSocket | null {
   const token = getToken();
   if (!token) return null;
@@ -1173,7 +1217,11 @@ export function connectNotificationSocket(
   ws.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
-      onNotification(data);
+      // The socket also carries other event types (e.g. presence_changed);
+      // only unwrap and forward actual notification pushes.
+      if (data?.event === "notification" && data.notification) {
+        onNotification(data.notification);
+      }
     } catch (e) {
       console.error("Failed to parse websocket message", e);
     }

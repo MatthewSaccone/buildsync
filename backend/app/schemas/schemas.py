@@ -301,6 +301,7 @@ class ChannelOut(BaseModel):
     archived_at: datetime | None
     unread_count: int = 0
     last_message_at: datetime | None = None
+    muted: bool = False
 
     class Config:
         from_attributes = True
@@ -337,6 +338,29 @@ class NotificationOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ---- Notification settings ----
+class NotificationSettingsOut(BaseModel):
+    notify_on_message: bool
+    notify_on_mention: bool
+    notify_on_task_assignment: bool
+    desktop_enabled: bool
+
+    class Config:
+        from_attributes = True
+
+
+class NotificationSettingsUpdate(BaseModel):
+    notify_on_message: bool | None = None
+    notify_on_mention: bool | None = None
+    notify_on_task_assignment: bool | None = None
+    desktop_enabled: bool | None = None
+
+
+class ChannelMuteOut(BaseModel):
+    channel_id: int
+    muted: bool
 
 
 # ---- Materials ----

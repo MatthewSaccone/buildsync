@@ -5,11 +5,14 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth";
 import {
   connectNotificationSocket,
+  getNotificationSettings,
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
   type Notification,
 } from "@/lib/api";
+import { showDesktopNotification } from "@/lib/desktopNotifications";
+import NotificationSettingsPanel from "@/components/NotificationSettingsPanel";
 
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -25,16 +28,29 @@ export default function Topbar() {
   const { user, logout } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const settingsRef = useRef<HTMLDivElement>(null);
+  // Read fresh inside the socket callback without re-subscribing the socket
+  // every time settings change.
+  const desktopEnabledRef = useRef(false);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   useEffect(() => {
     if (!user) return;
     listNotifications().then(setNotifications).catch(() => {});
+    getNotificationSettings()
+      .then((s) => {
+        desktopEnabledRef.current = s.desktop_enabled;
+      })
+      .catch(() => {});
 
     const ws = connectNotificationSocket((notification) => {
       setNotifications((prev) => [notification, ...prev]);
+      if (desktopEnabledRef.current) {
+        showDesktopNotification("BuildSync", notification.message);
+      }
     });
     return () => ws?.close();
   }, [user]);
@@ -43,6 +59,9 @@ export default function Topbar() {
     function handleClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setOpen(false);
+      }
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setSettingsOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClick);
@@ -124,11 +143,25 @@ export default function Topbar() {
                   style={{ borderBottom: "1px solid var(--line)" }}
                 >
                   <span className="label-mono">Notifications</span>
-                  {unreadCount > 0 && (
-                    <button onClick={handleReadAll} className="label-mono" style={{ color: "var(--amber)" }}>
-                      Mark all read
+                  <div className="flex items-center gap-3">
+                    {unreadCount > 0 && (
+                      <button onClick={handleReadAll} className="label-mono" style={{ color: "var(--amber)" }}>
+                        Mark all read
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setSettingsOpen(true);
+                        setOpen(false);
+                      }}
+                      className="label-mono"
+                      style={{ color: "var(--paper-dim)" }}
+                      title="Notification settings"
+                      aria-label="Notification settings"
+                    >
+                      Settings
                     </button>
-                  )}
+                  </div>
                 </div>
                 <div style={{ maxHeight: "58vh", overflowY: "auto" }}>
                   {notifications.length === 0 && (
@@ -154,6 +187,22 @@ export default function Topbar() {
                   ))}
                 </div>
               </div>
+            )}
+          </div>
+
+          <div className="relative" ref={settingsRef}>
+            {settingsOpen && (
+              <NotificationSettingsPanel
+                onClose={() => {
+                  setSettingsOpen(false);
+                  // Refresh the cached desktop-enabled flag in case it changed.
+                  getNotificationSettings()
+                    .then((s) => {
+                      desktopEnabledRef.current = s.desktop_enabled;
+                    })
+                    .catch(() => {});
+                }}
+              />
             )}
           </div>
 

@@ -4,10 +4,40 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.notification import Notification
+from app.models.notification_settings import NotificationSettings
 from app.models.user import User
-from app.schemas.schemas import NotificationOut
+from app.schemas.schemas import NotificationOut, NotificationSettingsOut, NotificationSettingsUpdate
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
+
+
+def _get_or_create_settings(db: Session, user_id: int) -> NotificationSettings:
+    settings = db.query(NotificationSettings).filter(NotificationSettings.user_id == user_id).first()
+    if settings is None:
+        settings = NotificationSettings(user_id=user_id)
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+    return settings
+
+
+@router.get("/settings", response_model=NotificationSettingsOut)
+def get_notification_settings(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return _get_or_create_settings(db, user.id)
+
+
+@router.put("/settings", response_model=NotificationSettingsOut)
+def update_notification_settings(
+    payload: NotificationSettingsUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    settings = _get_or_create_settings(db, user.id)
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(settings, field, value)
+    db.commit()
+    db.refresh(settings)
+    return settings
 
 
 @router.get("", response_model=list[NotificationOut])

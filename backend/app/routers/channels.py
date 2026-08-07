@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.channel import Channel, ChannelMessage, ChannelRead
+from app.models.notification_settings import ChannelMute
 from app.models.project import ProjectMember
 from app.models.user import User
 from app.schemas.schemas import (
@@ -15,6 +16,7 @@ from app.schemas.schemas import (
     ChannelOut,
     ChannelMessageCreate,
     ChannelMessageOut,
+    ChannelMuteOut,
 )
 from app.services.connection_manager import manager
 from app.services.mentions import parse_mentioned_users
@@ -84,6 +86,15 @@ def _unread_count(db: Session, channel_id: int, user_id: int) -> int:
     return query.count()
 
 
+def _is_muted(db: Session, channel_id: int, user_id: int) -> bool:
+    return (
+        db.query(ChannelMute)
+        .filter(ChannelMute.channel_id == channel_id, ChannelMute.user_id == user_id)
+        .first()
+        is not None
+    )
+
+
 def _to_out(db: Session, channel: Channel, user_id: int) -> ChannelOut:
     last_message_at = (
         db.query(func.max(ChannelMessage.created_at))
@@ -93,6 +104,7 @@ def _to_out(db: Session, channel: Channel, user_id: int) -> ChannelOut:
     out = ChannelOut.model_validate(channel)
     out.unread_count = _unread_count(db, channel.id, user_id)
     out.last_message_at = last_message_at
+    out.muted = _is_muted(db, channel.id, user_id)
     return out
 
 
@@ -227,6 +239,41 @@ def unarchive_channel(
     return _to_out(db, channel, user.id)
 
 
+@router.post("/{channel_id}/mute", response_model=ChannelMuteOut)
+def mute_channel(
+    project_id: int,
+    channel_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Mute a channel (BS-104-4): the user keeps seeing unread badges, but
+    stops getting notifications/desktop alerts for new messages in it."""
+    _require_membership(db, project_id, user.id)
+    channel = _get_channel(db, project_id, channel_id)
+
+    if not _is_muted(db, channel.id, user.id):
+        db.add(ChannelMute(channel_id=channel.id, user_id=user.id))
+        db.commit()
+    return ChannelMuteOut(channel_id=channel.id, muted=True)
+
+
+@router.delete("/{channel_id}/mute", response_model=ChannelMuteOut)
+def unmute_channel(
+    project_id: int,
+    channel_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_membership(db, project_id, user.id)
+    channel = _get_channel(db, project_id, channel_id)
+
+    db.query(ChannelMute).filter(
+        ChannelMute.channel_id == channel.id, ChannelMute.user_id == user.id
+    ).delete()
+    db.commit()
+    return ChannelMuteOut(channel_id=channel.id, muted=False)
+
+
 @router.delete("/{channel_id}", status_code=204)
 def delete_channel(
     project_id: int,
@@ -325,6 +372,8 @@ async def send_channel_message(
     mentioned = parse_mentioned_users(body, project_id, db)
     for mentioned_user in mentioned:
         if mentioned_user.id == user.id:
+            continue
+        if _is_muted(db, channel.id, mentioned_user.id):
             continue
         await notify(
             db,

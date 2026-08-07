@@ -14,6 +14,7 @@ from app.models.channel import Channel, ChannelMessage, ChannelRead
 from app.models.scheduled_job import ScheduledJob
 from app.models.task import Task
 from app.models.task_material import TaskMaterial
+from app.models.notification_settings import NotificationSettings, ChannelMute
 
 __all__ = [
     "User",
@@ -36,4 +37,6 @@ __all__ = [
     "ScheduledJob",
     "Task",
     "TaskMaterial",
+    "NotificationSettings",
+    "ChannelMute",
 ]

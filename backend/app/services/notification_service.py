@@ -2,9 +2,30 @@ from sqlalchemy.orm import Session
 
 from app.models.message import DirectMessage
 from app.models.notification import Notification
+from app.models.notification_settings import NotificationSettings
 from app.models.user import User
 from app.schemas.schemas import DirectMessageOut
 from app.services.connection_manager import manager
+
+# Which NotificationSettings column gates which notification `type` value.
+# Types not listed here (e.g. "status_change", "comment") are always sent -
+# only the BS-104-4 categories (message/mention/task_assignment) are
+# user-configurable.
+_SETTINGS_FIELD_BY_TYPE = {
+    "message": "notify_on_message",
+    "mention": "notify_on_mention",
+    "task_assignment": "notify_on_task_assignment",
+}
+
+
+def _wants_notification(db: Session, user_id: int, type: str) -> bool:
+    field = _SETTINGS_FIELD_BY_TYPE.get(type)
+    if field is None:
+        return True
+    settings = db.query(NotificationSettings).filter(NotificationSettings.user_id == user_id).first()
+    if settings is None:
+        return True  # no row yet -> defaults, and every default is "on"
+    return bool(getattr(settings, field))
 
 
 async def notify(
@@ -16,8 +37,13 @@ async def notify(
     project_id: int | None = None,
     pin_id: int | None = None,
     task_id: int | None = None,
-) -> Notification:
-    """Create a Notification row and push it to the user's live socket, if connected."""
+) -> Notification | None:
+    """Create a Notification row and push it to the user's live socket, if
+    connected. Returns None (does nothing) if the user has turned this
+    notification type off in their settings (BS-104-4)."""
+    if not _wants_notification(db, user_id, type):
+        return None
+
     notification = Notification(
         user_id=user_id,
         type=type,
