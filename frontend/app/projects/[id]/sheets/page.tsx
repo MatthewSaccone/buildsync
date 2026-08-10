@@ -23,6 +23,7 @@ export default function ProjectSheetsPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [sheets, setSheets] = useState<Sheet[]>([]);
   const [fetching, setFetching] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -33,6 +34,7 @@ export default function ProjectSheetsPage() {
   useEffect(() => {
     if (!user || !projectId) return;
 
+    setError(null);
     Promise.all([
       getProject(projectId),
       listSheets(projectId),
@@ -41,12 +43,26 @@ export default function ProjectSheetsPage() {
         setProject(p);
         setSheets(s);
       })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Failed to load sheets.");
+      })
       .finally(() => setFetching(false));
 
   }, [user, projectId]);
 
-  if (loading || !user || fetching || !project) {
+  if (loading || !user || fetching) {
     return <PageLoader />;
+  }
+
+  if (error || !project) {
+    return (
+      <div
+        className="panel px-5 py-8 text-center text-sm"
+        style={{ color: "var(--paper-dim)" }}
+      >
+        {error || "Couldn't load this project."}
+      </div>
+    );
   }
 
   return (

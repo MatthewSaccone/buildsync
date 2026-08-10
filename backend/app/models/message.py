@@ -1,9 +1,10 @@
-from datetime import datetime, timezone, timezone
+from datetime import datetime, timezone
 
 from sqlalchemy import Text, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.types import UTCDateTime
 
 
 class DirectMessage(Base):
@@ -24,7 +25,7 @@ class DirectMessage(Base):
     # assignment ping), so the chat UI can render a "View task" link/button
     # on it. Null for ordinary human-typed messages.
     task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=lambda: datetime.now(timezone.utc), index=True)
     read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     sender = relationship("User", foreign_keys=[sender_id])

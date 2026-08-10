@@ -103,6 +103,7 @@ export default function SheetViewerPage() {
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [catalog, setCatalog] = useState<Material[]>([]);
   const [fetching, setFetching] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<PinStatus | "all">("all");
   const [tradeFilter, setTradeFilter] = useState<UserRole | "all">("all");
@@ -129,12 +130,16 @@ export default function SheetViewerPage() {
 
   useEffect(() => {
     if (!user || !projectId || !sheetId) return;
+    setLoadError(null);
     Promise.all([listSheets(projectId), listPins(sheetId), listMembers(projectId), listMaterials()])
       .then(([sheets, pinList, memberList, materialList]) => {
         setSheet(sheets.find((s) => s.id === sheetId) ?? null);
         setPins(pinList);
         setMembers(memberList);
         setCatalog(materialList);
+      })
+      .catch((err) => {
+        setLoadError(err instanceof Error ? err.message : "Failed to load sheet.");
       })
       .finally(() => setFetching(false));
   }, [user, projectId, sheetId]);
@@ -337,6 +342,17 @@ export default function SheetViewerPage() {
   }
 
   if (loading || !user || fetching) return <PageLoader />;
+
+  if (loadError) {
+    return (
+      <div
+        className="panel px-5 py-8 text-center text-sm"
+        style={{ color: "var(--paper-dim)" }}
+      >
+        {loadError}
+      </div>
+    );
+  }
 
   if (!sheet) {
     return (

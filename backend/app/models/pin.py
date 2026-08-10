@@ -1,9 +1,10 @@
-from datetime import datetime, timezone, timezone
+from datetime import datetime, timezone
 
 from sqlalchemy import String, DateTime, ForeignKey, Float, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.types import UTCDateTime
 from app.models.enums import PinStatus, PinPriority, UserRole
 
 
@@ -22,7 +23,7 @@ class Pin(Base):
     trade: Mapped[UserRole | None] = mapped_column(SAEnum(UserRole), nullable=True)
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     assigned_to_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=lambda: datetime.now(timezone.utc), index=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     sheet = relationship("Sheet", back_populates="pins")

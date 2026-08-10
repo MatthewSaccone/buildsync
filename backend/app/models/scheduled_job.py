@@ -1,9 +1,10 @@
-from datetime import datetime, timezone, timezone
+from datetime import datetime, timezone
 
 from sqlalchemy import String, DateTime, ForeignKey, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.types import UTCDateTime
 from app.models.enums import UserRole, JobStatus
 
 
@@ -35,7 +36,7 @@ class ScheduledJob(Base):
     end_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
     project = relationship("Project", back_populates="scheduled_jobs")
     pin = relationship("Pin")
