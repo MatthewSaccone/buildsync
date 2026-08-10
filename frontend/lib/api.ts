@@ -249,13 +249,33 @@ export interface OverduePin {
   days_open: number;
 }
 
-export interface ActivityItem {
-  kind: string;
+/** A single entry in a project's activity timeline (BS-201). `extra` is a
+ * freeform bag of kind-specific ids/fields — shape depends on `kind`:
+ *  - pin_created / comment_added (pin): { pin_id, sheet_id }
+ *  - comment_added (task) / task_completed / cost_added (task): { task_id }
+ *  - cost_added (pin): { pin_id, sheet_id, amount }
+ *  - sheet_uploaded: { sheet_id }
+ *  - chat_message: { channel_id, channel_name }
+ *  - member_joined: { user_id, role }
+ */
+export type ActivityKind =
+  | "pin_created"
+  | "comment_added"
+  | "task_completed"
+  | "cost_added"
+  | "sheet_uploaded"
+  | "chat_message"
+  | "member_joined"
+  | string;
+
+export interface ActivityEvent {
+  id: number;
+  project_id: number;
+  kind: ActivityKind;
   message: string;
-  pin_id: number;
-  pin_title: string;
-  sheet_id: number;
+  actor_id: number | null;
   actor_name: string;
+  extra: Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -266,7 +286,7 @@ export interface DashboardData {
   by_trade: Record<string, number>;
   by_priority: Record<string, number>;
   overdue: OverduePin[];
-  recent_activity: ActivityItem[];
+  recent_activity: ActivityEvent[];
 }
 
 // ==========================================
@@ -545,6 +565,21 @@ export async function updateProject(
 
 export async function getDashboard(projectId: string | number): Promise<DashboardData> {
   const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/dashboard`);
+  return res.json();
+}
+
+/** Paginated project activity timeline (BS-201). Pass `before` (the
+ * `created_at` of the oldest item you've already loaded) to page further
+ * back in time. */
+export async function listActivity(
+  projectId: string | number,
+  options?: { before?: string; limit?: number }
+): Promise<ActivityEvent[]> {
+  const params = new URLSearchParams();
+  if (options?.before) params.set("before", options.before);
+  if (options?.limit) params.set("limit", String(options.limit));
+  const qs = params.toString();
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/activity${qs ? `?${qs}` : ""}`);
   return res.json();
 }
 

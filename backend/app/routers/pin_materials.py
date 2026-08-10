@@ -9,6 +9,7 @@ from app.models.pin_material import PinMaterial
 from app.models.project import ProjectMember
 from app.models.user import User
 from app.schemas.schemas import PinMaterialCreate, PinMaterialUpdate, PinMaterialOut
+from app.services.activity_service import ActivityKind, log_activity
 from app.services.connection_manager import manager
 from app.services.pin_serializer import serialize_pin
 
@@ -67,6 +68,18 @@ async def add_pin_material(
     db.refresh(pin_material)
 
     await _broadcast_pin(db, pin)
+
+    total = round(payload.quantity * float(variant.price), 2)
+    await log_activity(
+        db,
+        pin.sheet.project_id,
+        ActivityKind.COST_ADDED,
+        f'{user.full_name} added {payload.quantity} {variant.unit or ""} of {variant.material.name} to "{pin.title}" (${total:,.2f})'.replace(
+            "  ", " "
+        ),
+        actor=user,
+        extra={"pin_id": pin.id, "sheet_id": pin.sheet_id, "amount": total},
+    )
     return pin_material
 
 
@@ -105,3 +118,4 @@ async def remove_pin_material(
     db.commit()
 
     await _broadcast_pin(db, pin)
+    

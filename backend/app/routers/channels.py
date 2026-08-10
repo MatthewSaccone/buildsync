@@ -18,6 +18,7 @@ from app.schemas.schemas import (
     ChannelMessageOut,
     ChannelMuteOut,
 )
+from app.services.activity_service import ActivityKind, log_activity
 from app.services.connection_manager import manager
 from app.services.mentions import parse_mentioned_users
 from app.services.notification_service import notify
@@ -367,6 +368,21 @@ async def send_channel_message(
     payload_out = ChannelMessageOut.model_validate(message).model_dump(mode="json")
     await manager.broadcast_to_project(
         project_id, {"event": "channel_message_created", "channel_id": channel.id, "message": payload_out}
+    )
+
+    # Timeline gets a truncated summary, not the full message — this is a
+    # project-wide feed, so anyone can see it appear here, unlike the
+    # channel itself which members choose to open. Direct messages never
+    # reach this function at all (they broadcast via send_to_user only),
+    # so they're excluded from the project activity log by construction.
+    summary = body if len(body) <= 80 else body[:77].rstrip() + "…"
+    await log_activity(
+        db,
+        project_id,
+        ActivityKind.CHAT_MESSAGE,
+        f'{user.full_name} in #{channel.name}: {summary}',
+        actor=user,
+        extra={"channel_id": channel.id, "channel_name": channel.name},
     )
 
     mentioned = parse_mentioned_users(body, project_id, db)

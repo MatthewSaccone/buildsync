@@ -465,14 +465,22 @@ class DashboardCounts(BaseModel):
     counts: dict[str, int]
 
 
-class ActivityItem(BaseModel):
-    kind: str  # "pin_created" | "pin_status_changed" | "comment"
+class ActivityEventOut(BaseModel):
+    """Generic project timeline entry (BS-201). `extra` carries whatever
+    kind-specific ids the frontend needs to link back to the source object
+    (pin_id, sheet_id, task_id, channel_id, etc) — shape varies by `kind`."""
+
+    id: int
+    project_id: int
+    kind: str
     message: str
-    pin_id: int
-    pin_title: str
-    sheet_id: int
+    actor_id: int | None
     actor_name: str
+    extra: dict | None = None
     created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 class OverduePin(BaseModel):
@@ -495,7 +503,7 @@ class ProjectDashboard(BaseModel):
     by_trade: dict[str, int]
     by_priority: dict[str, int]
     overdue: list[OverduePin]
-    recent_activity: list[ActivityItem]
+    recent_activity: list[ActivityEventOut]
 
 
 # ---- Search ----

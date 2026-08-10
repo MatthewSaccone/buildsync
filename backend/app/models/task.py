@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Text, DateTime, ForeignKey, Table, Column, Enum as SAEnum
+from sqlalchemy import String, Text, ForeignKey, Table, Column, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -32,11 +32,11 @@ class Task(Base):
     status: Mapped[TaskStatus] = mapped_column(SAEnum(TaskStatus), default=TaskStatus.TODO)
     priority: Mapped[PinPriority] = mapped_column(SAEnum(PinPriority), default=PinPriority.NORMAL)
     owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-    due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    due_date: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=lambda: datetime.now(timezone.utc), index=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
     project = relationship("Project", back_populates="tasks")
     owner = relationship("User", foreign_keys=[owner_id])

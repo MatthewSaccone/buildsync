@@ -9,6 +9,7 @@ from app.models.task_material import TaskMaterial
 from app.models.user import User
 from app.routers.tasks import _get_task, _require_membership
 from app.schemas.schemas import TaskMaterialCreate, TaskMaterialUpdate, TaskMaterialOut, TaskOut
+from app.services.activity_service import ActivityKind, log_activity
 from app.services.connection_manager import manager
 
 router = APIRouter(prefix="/tasks/{task_id}/materials", tags=["task materials"])
@@ -60,6 +61,18 @@ async def add_task_material(
     db.refresh(task_material)
 
     await _broadcast_task(db, task.project_id, task_id)
+
+    total = round(payload.quantity * float(variant.price), 2)
+    await log_activity(
+        db,
+        task.project_id,
+        ActivityKind.COST_ADDED,
+        f'{user.full_name} added {payload.quantity} {variant.unit or ""} of {variant.material.name} to "{task.title}" (${total:,.2f})'.replace(
+            "  ", " "
+        ),
+        actor=user,
+        extra={"task_id": task.id, "amount": total},
+    )
     return task_material
 
 

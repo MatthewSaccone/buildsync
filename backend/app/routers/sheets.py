@@ -10,6 +10,7 @@ from app.models.project import ProjectMember
 from app.models.sheet import Sheet
 from app.models.user import User
 from app.schemas.schemas import SheetOut
+from app.services.activity_service import ActivityKind, log_activity
 
 router = APIRouter(prefix="/projects/{project_id}/sheets", tags=["sheets"])
 
@@ -26,7 +27,7 @@ def _require_membership(db: Session, project_id: int, user_id: int):
 
 
 @router.post("", response_model=SheetOut)
-def upload_sheet(
+async def upload_sheet(
     project_id: int,
     title: str = Form(...),
     file: UploadFile = File(...),
@@ -49,6 +50,16 @@ def upload_sheet(
     sheet.root_sheet_id = sheet.id  # v1 is the root of its own family
     db.commit()
     db.refresh(sheet)
+
+    await log_activity(
+        db,
+        project_id,
+        ActivityKind.SHEET_UPLOADED,
+        f'{user.full_name} uploaded "{title}"',
+        actor=user,
+        extra={"sheet_id": sheet.id},
+    )
+
     return sheet
 
 

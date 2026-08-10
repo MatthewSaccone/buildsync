@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import String, DateTime, ForeignKey, Enum as SAEnum
+from sqlalchemy import String, ForeignKey, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -30,7 +30,7 @@ class ProjectMember(Base):
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"))
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     role: Mapped[ProjectRole] = mapped_column(SAEnum(ProjectRole), default=ProjectRole.MEMBER)
-    joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    joined_at: Mapped[datetime] = mapped_column(UTCDateTime, default=lambda: datetime.now(timezone.utc))
 
     project = relationship("Project", back_populates="members")
     user = relationship("User", back_populates="project_memberships")

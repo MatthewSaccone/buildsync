@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Topbar from "@/components/Topbar";
 import PageLoader from "@/components/PageLoader";
@@ -12,6 +12,7 @@ import ProjectCostsPage from "./costs/page";
 import ProjectSheetsPage from "./sheets/page";
 import ProjectChatPage from "./chat/page";
 import ProjectTasksPage from "./tasks/page";
+import ProjectActivityPage from "./activity/page";
 import { useAuth } from "@/lib/auth";
 import {
   getProject,
@@ -35,10 +36,16 @@ export default function ProjectDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const projectId = Number(params.id);
+  const searchParams = useSearchParams();
 
-  const [activeTab, setActiveTab] = useState<"dashboard" | "sheets" | "pins" | "tasks" | "costs" | "chat">(
-    "dashboard"
-  );
+  const VALID_TABS = ["dashboard", "sheets", "pins", "tasks", "costs", "chat", "activity"] as const;
+  type TabKey = (typeof VALID_TABS)[number];
+  const tabParam = searchParams.get("tab");
+  const initialTab: TabKey = (VALID_TABS as readonly string[]).includes(tabParam ?? "")
+    ? (tabParam as TabKey)
+    : "dashboard";
+
+  const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
 
   const [project, setProject] = useState<Project | null>(null);
   const [members, setMembers] = useState<ProjectMember[]>([]);
@@ -155,6 +162,8 @@ export default function ProjectDetailPage() {
         {activeTab === "costs" && (<ProjectCostsPage />)}
 
         {activeTab === "chat" && (<ProjectChatPage />)}
+
+        {activeTab === "activity" && (<ProjectActivityPage />)}
 
         <div className="mt-8 w-fit max-w-full">
           {/* Members */}

@@ -11,6 +11,7 @@ from app.models.project import ProjectMember
 from app.models.sheet import Sheet
 from app.models.user import User
 from app.schemas.schemas import PinCreate, PinUpdate, PinOut
+from app.services.activity_service import ActivityKind, log_activity
 from app.services.connection_manager import manager
 from app.services.notification_service import notify
 
@@ -58,6 +59,15 @@ async def create_pin(
     await manager.broadcast_to_project(
         sheet.project_id,
         {"event": "pin_created", "pin": PinOut.model_validate(pin).model_dump(mode="json")},
+    )
+
+    await log_activity(
+        db,
+        sheet.project_id,
+        ActivityKind.PIN_CREATED,
+        f'{user.full_name} opened "{pin.title}"',
+        actor=user,
+        extra={"pin_id": pin.id, "sheet_id": pin.sheet_id},
     )
 
     if pin.assigned_to_id and pin.assigned_to_id != user.id:

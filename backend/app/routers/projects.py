@@ -8,12 +8,14 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.comment import Comment
 from app.models.enums import PinStatus
+from app.models.activity_event import ActivityEvent
 from app.models.pin import Pin
 from app.models.project import Project, ProjectMember
 from app.models.enums import ProjectRole
 from app.models.sheet import Sheet
 from app.models.user import User
 from app.routers.channels import _ensure_general_channel as ensure_general_channel
+from app.services.activity_service import ActivityKind, log_activity
 from app.schemas.schemas import (
     ProjectCreate,
     ProjectOut,
@@ -23,7 +25,7 @@ from app.schemas.schemas import (
     ProjectMemberRoleUpdate,
     ProjectDashboard,
     OverduePin,
-    ActivityItem,
+    ActivityEventOut,
     SearchResults,
     SearchPinHit,
     PinOut,
@@ -105,7 +107,7 @@ def update_project(
 
 
 @router.post("/{project_id}/members", response_model=ProjectMemberOut)
-def add_member(
+async def add_member(
     project_id: int,
     payload: ProjectMemberAdd,
     db: Session = Depends(get_db),
@@ -131,6 +133,16 @@ def add_member(
     db.add(new_member)
     db.commit()
     db.refresh(new_member)
+
+    await log_activity(
+        db,
+        project_id,
+        ActivityKind.MEMBER_JOINED,
+        f"{target_user.full_name} joined the project",
+        actor=target_user,
+        extra={"user_id": target_user.id, "role": new_member.role.value},
+    )
+
     return new_member
 
 
@@ -206,7 +218,7 @@ def project_dashboard(project_id: int, db: Session = Depends(get_db), user: User
     by_trade: dict[str, int] = {}
     by_priority: dict[str, int] = {}
     overdue: list[OverduePin] = []
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     for pin in pins:
         by_status[pin.status.value] = by_status.get(pin.status.value, 0) + 1
@@ -230,46 +242,16 @@ def project_dashboard(project_id: int, db: Session = Depends(get_db), user: User
                 )
     overdue.sort(key=lambda p: p.days_open, reverse=True)
 
-    # Recent activity: newest pins + newest comments across the project, merged and trimmed.
-    recent_pins = sorted(pins, key=lambda p: p.created_at, reverse=True)[:10]
-    recent_comments = (
-        db.query(Comment)
-        .join(Pin, Comment.pin_id == Pin.id)
-        .join(Sheet, Pin.sheet_id == Sheet.id)
-        .filter(Sheet.project_id == project_id)
-        .order_by(Comment.created_at.desc())
-        .limit(10)
+    # Recent activity now comes straight from the persisted, generic
+    # activity log (BS-201) — every subsystem below funnels events into it,
+    # so this is just "the 15 newest rows for this project."
+    activity = (
+        db.query(ActivityEvent)
+        .filter(ActivityEvent.project_id == project_id)
+        .order_by(ActivityEvent.created_at.desc())
+        .limit(15)
         .all()
     )
-
-    activity: list[ActivityItem] = []
-    for pin in recent_pins:
-        creator = db.get(User, pin.created_by_id)
-        activity.append(
-            ActivityItem(
-                kind="pin_created",
-                message=f'{creator.full_name if creator else "Someone"} opened "{pin.title}"',
-                pin_id=pin.id,
-                pin_title=pin.title,
-                sheet_id=pin.sheet_id,
-                actor_name=creator.full_name if creator else "Unknown",
-                created_at=pin.created_at,
-            )
-        )
-    for comment in recent_comments:
-        activity.append(
-            ActivityItem(
-                kind="comment",
-                message=f'{comment.author.full_name} commented on "{comment.pin.title}"',
-                pin_id=comment.pin_id,
-                pin_title=comment.pin.title,
-                sheet_id=comment.pin.sheet_id,
-                actor_name=comment.author.full_name,
-                created_at=comment.created_at,
-            )
-        )
-    activity.sort(key=lambda a: a.created_at, reverse=True)
-    activity = activity[:15]
 
     return ProjectDashboard(
         project_id=project_id,
@@ -280,6 +262,26 @@ def project_dashboard(project_id: int, db: Session = Depends(get_db), user: User
         overdue=overdue[:20],
         recent_activity=activity,
     )
+
+
+@router.get("/{project_id}/activity", response_model=list[ActivityEventOut])
+def list_activity(
+    project_id: int,
+    before: datetime | None = None,
+    limit: int = 30,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Paginated project timeline (BS-201). Pass `before` (an ISO timestamp
+    from the oldest item you've already loaded) to page further back."""
+    _require_membership(db, project_id, user.id)
+    limit = max(1, min(limit, 100))
+
+    query = db.query(ActivityEvent).filter(ActivityEvent.project_id == project_id)
+    if before:
+        query = query.filter(ActivityEvent.created_at < before)
+
+    return query.order_by(ActivityEvent.created_at.desc()).limit(limit).all()
 
 
 @router.get("/{project_id}/search", response_model=SearchResults)

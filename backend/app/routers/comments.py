@@ -8,6 +8,7 @@ from app.models.pin import Pin
 from app.models.project import ProjectMember
 from app.models.user import User
 from app.schemas.schemas import CommentCreate, CommentOut
+from app.services.activity_service import ActivityKind, log_activity
 from app.services.connection_manager import manager
 from app.services.mentions import parse_mentioned_users
 from app.services.notification_service import notify
@@ -47,6 +48,15 @@ async def add_comment(
     await manager.broadcast_to_project(
         project_id,
         {"event": "comment_created", "comment": CommentOut.model_validate(comment).model_dump(mode="json")},
+    )
+
+    await log_activity(
+        db,
+        project_id,
+        ActivityKind.COMMENT_ADDED,
+        f'{user.full_name} commented on "{pin.title}"',
+        actor=user,
+        extra={"pin_id": pin.id, "sheet_id": pin.sheet_id},
     )
 
     interested = {pin.created_by_id, pin.assigned_to_id} - {user.id, None}

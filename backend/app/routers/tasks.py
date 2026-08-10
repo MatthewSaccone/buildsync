@@ -16,6 +16,7 @@ from app.models.task import Task
 from app.models.task_material import TaskMaterial
 from app.models.user import User
 from app.schemas.schemas import TaskCreate, TaskUpdate, TaskOut, CommentCreate, CommentOut
+from app.services.activity_service import ActivityKind, log_activity
 from app.services.connection_manager import manager
 from app.services.notification_service import notify
 
@@ -161,8 +162,11 @@ async def update_task(
 
     if payload.status == TaskStatus.DONE and task.completed_at is None:
         task.completed_at = datetime.utcnow()
-    elif payload.status and payload.status != TaskStatus.DONE:
-        task.completed_at = None
+        just_completed = True
+    else:
+        just_completed = False
+        if payload.status and payload.status != TaskStatus.DONE:
+            task.completed_at = None
 
     if related_pin_ids is not None:
         task.related_pins = _resolve_related_pins(db, project_id, related_pin_ids)
@@ -173,6 +177,16 @@ async def update_task(
     await manager.broadcast_to_project(
         project_id, {"event": "task_updated", "task": TaskOut.model_validate(task).model_dump(mode="json")}
     )
+
+    if just_completed:
+        await log_activity(
+            db,
+            project_id,
+            ActivityKind.TASK_COMPLETED,
+            f'{user.full_name} completed "{task.title}"',
+            actor=user,
+            extra={"task_id": task.id},
+        )
 
     if task.owner_id and task.owner_id != previous_owner_id and task.owner_id != user.id:
         await notify(
@@ -238,6 +252,15 @@ async def add_task_comment(
     await manager.broadcast_to_project(
         task.project_id,
         {"event": "task_comment_created", "comment": CommentOut.model_validate(comment).model_dump(mode="json")},
+    )
+
+    await log_activity(
+        db,
+        task.project_id,
+        ActivityKind.COMMENT_ADDED,
+        f'{user.full_name} commented on task "{task.title}"',
+        actor=user,
+        extra={"task_id": task.id},
     )
 
     interested = {task.created_by_id, task.owner_id} - {user.id, None}
