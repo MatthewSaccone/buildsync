@@ -16,6 +16,7 @@ from app.models.task import Task
 from app.models.task_material import TaskMaterial
 from app.models.notification_settings import NotificationSettings, ChannelMute
 from app.models.activity_event import ActivityEvent
+from app.models.estimate import EstimateSession, EstimateLine
 
 __all__ = [
     "User",
@@ -41,4 +42,6 @@ __all__ = [
     "NotificationSettings",
     "ChannelMute",
     "ActivityEvent",
+    "EstimateSession",
+    "EstimateLine",
 ]

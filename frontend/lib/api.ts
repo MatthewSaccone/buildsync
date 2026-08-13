@@ -1599,3 +1599,105 @@ export async function removeTaskMaterial(
 ): Promise<void> {
   await fetchWithAuth(`${API_URL}/tasks/${taskId}/materials/${taskMaterialId}`, { method: "DELETE" });
 }
+
+// ---- Estimates ----
+export interface MaterialOptionOut {
+  variant_id: number;
+  variant_label: string;
+  unit_price: number;
+  purchase_quantity: number;
+  line_total: number;
+}
+
+export interface EstimateLineOut {
+  id: number;
+  category: string;
+  material_variant_id: number | null;
+  material_label: string | null;
+  raw_quantity_needed: number;
+  waste_factor: number;
+  purchase_quantity: number;
+  unit_price_snapshot: number | null;
+  alternates: MaterialOptionOut[];
+  unmatched: boolean;
+  user_overridden: boolean;
+  line_total: number;
+}
+
+export interface EstimateSessionOut {
+  id: number;
+  project_id: number;
+  sheet_id: number;
+  status: "pending_review" | "finalized" | "failed";
+  scale_ratio: number | null;
+  scale_confirmed: boolean;
+  wall_height_ft: number;
+  extracted_dimensions: Record<string, any> | null;
+  low_confidence_fields: string[] | null;
+  created_at: string;
+  finalized_at: string | null;
+  lines: EstimateLineOut[];
+  total_cost: number;
+}
+
+export interface DimensionConfirmPayload {
+  scale_ratio?: number | null;
+  wall_length_ft: number;
+  wall_height_ft?: number;
+  opening_sqft?: number;
+  floor_area_sqft?: number;
+  roof_area_sqft?: number;
+  include_categories?: string[];
+  waste_factor_overrides?: Record<string, number>;
+}
+
+export async function startEstimate(projectId: string | number, sheetId: number): Promise<EstimateSessionOut> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/estimates`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sheet_id: sheetId }),
+  });
+  if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null));
+  return res.json();
+}
+
+export async function getEstimate(projectId: string | number, sessionId: number): Promise<EstimateSessionOut> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/estimates/${sessionId}`);
+  if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null));
+  return res.json();
+}
+
+export async function listEstimates(projectId: string | number): Promise<EstimateSessionOut[]> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/estimates`);
+  if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null));
+  return res.json();
+}
+
+export async function confirmEstimate(
+  projectId: string | number,
+  sessionId: number,
+  payload: DimensionConfirmPayload
+): Promise<EstimateSessionOut> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/estimates/${sessionId}/confirm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null));
+  return res.json();
+}
+
+export async function overrideEstimateLine(
+  projectId: string | number,
+  sessionId: number,
+  lineId: number,
+  materialVariantId: number
+): Promise<EstimateSessionOut> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/estimates/${sessionId}/lines/${lineId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ material_variant_id: materialVariantId }),
+  });
+  if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null));
+  return res.json();
+}

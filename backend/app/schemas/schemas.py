@@ -682,3 +682,80 @@ class TaskOut(BaseModel):
     @property
     def total_cost(self) -> float:
         return round(sum(m.line_total for m in self.materials), 2)
+
+
+# ---- Estimates (drawing -> materials cost) ----
+class EstimateSessionCreate(BaseModel):
+    sheet_id: int
+
+
+class DimensionConfirm(BaseModel):
+    """User-confirmed values sent back after reviewing the raw extraction.
+    Anything left null falls back to the extracted value if present."""
+    scale_ratio: float | None = None
+    wall_length_ft: float
+    wall_height_ft: float = 8.0
+    opening_sqft: float = 0.0
+    floor_area_sqft: float = 0.0
+    roof_area_sqft: float = 0.0
+    include_categories: list[str] | None = None
+    waste_factor_overrides: dict[str, float] | None = None
+
+
+class MaterialOptionOut(BaseModel):
+    variant_id: int
+    variant_label: str
+    unit_price: float
+    purchase_quantity: int
+    line_total: float
+
+
+class EstimateLineOut(BaseModel):
+    id: int
+    category: str
+    material_variant_id: int | None
+    material_label: str | None
+    raw_quantity_needed: float
+    waste_factor: float
+    purchase_quantity: float
+    unit_price_snapshot: float | None
+    alternates: list[MaterialOptionOut] = []
+    unmatched: bool
+    user_overridden: bool
+
+    class Config:
+        from_attributes = True
+
+    @computed_field
+    @property
+    def line_total(self) -> float:
+        if self.unit_price_snapshot is None:
+            return 0.0
+        return round(self.purchase_quantity * self.unit_price_snapshot, 2)
+
+
+class EstimateSessionOut(BaseModel):
+    id: int
+    project_id: int
+    sheet_id: int
+    status: str
+    scale_ratio: float | None
+    scale_confirmed: bool
+    wall_height_ft: float
+    extracted_dimensions: dict | None
+    low_confidence_fields: list | None
+    created_at: datetime
+    finalized_at: datetime | None
+    lines: list[EstimateLineOut] = []
+
+    class Config:
+        from_attributes = True
+
+    @computed_field
+    @property
+    def total_cost(self) -> float:
+        return round(sum(line.line_total for line in self.lines), 2)
+
+
+class EstimateLineOverride(BaseModel):
+    material_variant_id: int
