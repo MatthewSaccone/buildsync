@@ -1,12 +1,13 @@
 from datetime import datetime, timezone, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.config import settings
+from app.core.limiter import limiter
 from app.core.security import (
     hash_password,
     verify_password,
@@ -28,7 +29,6 @@ from app.schemas.schemas import (
     PasswordResetConfirm,
 )
 from app.services.email_service import send_password_reset_email
-from app.main import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -95,7 +95,8 @@ def lookup_by_email(email: str, db: Session = Depends(get_db), user: User = Depe
 
 
 @router.post("/signup", response_model=UserOut)
-def signup(payload: UserCreate, db: Session = Depends(get_db)):
+@limiter.limit("5/hour")
+def signup(request: Request, payload: UserCreate, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == payload.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -113,9 +114,9 @@ def signup(payload: UserCreate, db: Session = Depends(get_db)):
     return user
 
 
-@router.post("/login")
+@router.post("/login", response_model=TokenPair)
 @limiter.limit("5/minute")
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
@@ -157,7 +158,8 @@ def logout(payload: RefreshRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/password-reset/request", status_code=202)
-def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(get_db)):
+@limiter.limit("3/hour")
+def request_password_reset(request: Request, payload: PasswordResetRequest, db: Session = Depends(get_db)):
     # Always return 202 regardless of whether the email exists — don't leak account existence.
     user = db.query(User).filter(User.email == payload.email).first()
     if user:
