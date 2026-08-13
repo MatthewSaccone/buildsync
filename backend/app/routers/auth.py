@@ -28,6 +28,7 @@ from app.schemas.schemas import (
     PasswordResetConfirm,
 )
 from app.services.email_service import send_password_reset_email
+from app.main import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -112,7 +113,8 @@ def signup(payload: UserCreate, db: Session = Depends(get_db)):
     return user
 
 
-@router.post("/login", response_model=TokenPair)
+@router.post("/login")
+@limiter.limit("5/minute")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
