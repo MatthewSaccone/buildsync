@@ -18,3 +18,4 @@ PyMuPDF
 slowapi==0.1.9
 secure==2.0.1
 python-magic==0.4.27
+clamd==1.0.2

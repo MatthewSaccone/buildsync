@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     allowed_hosts: str = ""  # comma-separated; empty disables TrustedHostMiddleware (dev default)
     debug: bool = True
+    clamav_enabled: bool = True
+    clamav_socket: str = "/var/run/clamav/clamd.ctl"
+    clamav_host: str = ""  # set instead of clamav_socket to use TCP (e.g. a clamav-daemon container)
+    clamav_port: int = 3310
+    # If the AV daemon is unreachable, should uploads be rejected (fail closed,
+    # safer) or allowed through with just extension/content-type checks
+    # (fail open, more available)? Default fails closed in production.
+    clamav_fail_open: bool = False
 
     @property
     def database_url(self) -> str:
