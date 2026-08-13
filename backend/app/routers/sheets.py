@@ -15,6 +15,15 @@ from app.services.activity_service import ActivityKind, log_activity
 router = APIRouter(prefix="/projects/{project_id}/sheets", tags=["sheets"])
 
 
+def _validate_title(title: str) -> str:
+    title = title.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Sheet title can't be empty")
+    if len(title) > 255:
+        raise HTTPException(status_code=400, detail="Sheet title is too long")
+    return title
+
+
 def _require_membership(db: Session, project_id: int, user_id: int):
     membership = (
         db.query(ProjectMember)
@@ -36,6 +45,7 @@ async def upload_sheet(
 ):
     """Upload a brand-new sheet (starts a new version family at v1)."""
     _require_membership(db, project_id, user.id)
+    title = _validate_title(title)
     stored_path = save_upload(file, SHEET_EXTENSIONS)
 
     sheet = Sheet(
@@ -95,6 +105,7 @@ def upload_new_version(
     if not existing or existing.project_id != project_id:
         raise HTTPException(status_code=404, detail="Sheet not found")
 
+    title = _validate_title(title) if title is not None else None
     stored_path = save_upload(file, SHEET_EXTENSIONS)
 
     latest_version = (

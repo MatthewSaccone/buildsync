@@ -19,6 +19,16 @@ router = APIRouter(prefix="/sheets/{sheet_id}/pins", tags=["pins"])
 project_pins_router = APIRouter(prefix="/projects/{project_id}/pins", tags=["pins"])
 
 
+def _require_project_member(db: Session, project_id: int, user_id: int) -> None:
+    membership = (
+        db.query(ProjectMember)
+        .filter(ProjectMember.project_id == project_id, ProjectMember.user_id == user_id)
+        .first()
+    )
+    if not membership:
+        raise HTTPException(status_code=403, detail="Not a member of this project")
+
+
 def _require_sheet_membership(db: Session, sheet_id: int, user_id: int) -> Sheet:
     sheet = db.get(Sheet, sheet_id)
     if not sheet:
@@ -41,6 +51,8 @@ async def create_pin(
     user: User = Depends(get_current_user),
 ):
     sheet = _require_sheet_membership(db, sheet_id, user.id)
+    if payload.assigned_to_id is not None:
+        _require_project_member(db, sheet.project_id, payload.assigned_to_id)
 
     pin = Pin(
         sheet_id=sheet_id,
@@ -142,6 +154,8 @@ async def update_pin(
     previous_status = pin.status
 
     update_data = payload.model_dump(exclude_unset=True)
+    if "assigned_to_id" in update_data and update_data["assigned_to_id"] is not None:
+        _require_project_member(db, sheet.project_id, update_data["assigned_to_id"])
     for field, value in update_data.items():
         setattr(pin, field, value)
 

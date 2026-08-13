@@ -9,6 +9,7 @@ from app.core.deps import get_current_user
 from app.models.channel import Channel, ChannelMessage, ChannelRead
 from app.models.notification_settings import ChannelMute
 from app.models.project import ProjectMember
+from app.models.task import Task
 from app.models.user import User
 from app.schemas.schemas import (
     ChannelCreate,
@@ -35,6 +36,14 @@ def _require_membership(db: Session, project_id: int, user_id: int) -> ProjectMe
     if not membership:
         raise HTTPException(status_code=403, detail="Not a member of this project")
     return membership
+
+
+def _validate_task(db: Session, project_id: int, task_id: int | None) -> None:
+    if task_id is None:
+        return
+    task = db.get(Task, task_id)
+    if not task or task.project_id != project_id:
+        raise HTTPException(status_code=400, detail="Task must belong to the same project")
 
 
 def _get_channel(db: Session, project_id: int, channel_id: int) -> Channel:
@@ -346,8 +355,14 @@ async def send_channel_message(
     body = payload.body.strip()
     if not body:
         raise HTTPException(status_code=400, detail="Message can't be empty")
+    _validate_task(db, project_id, payload.task_id)
 
-    message = ChannelMessage(channel_id=channel.id, sender_id=user.id, body=body)
+    message = ChannelMessage(
+        channel_id=channel.id,
+        sender_id=user.id,
+        body=body,
+        task_id=payload.task_id,
+    )
     db.add(message)
     db.commit()
     db.refresh(message)

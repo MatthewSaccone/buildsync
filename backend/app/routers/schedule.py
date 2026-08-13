@@ -9,6 +9,8 @@ from app.models.enums import JobStatus, UserRole
 from app.models.pin import Pin
 from app.models.project import Project, ProjectMember
 from app.models.scheduled_job import ScheduledJob
+from app.models.sheet import Sheet
+from app.models.sheet import Sheet
 from app.models.task import Task
 from app.models.user import User
 from app.schemas.schemas import ScheduledJobCreate, ScheduledJobUpdate, ScheduledJobOut
@@ -83,12 +85,36 @@ def _validate_depends_on(db: Session, project_id: int, depends_on_id: int | None
         raise HTTPException(status_code=400, detail="Dependency must be a job on the same project")
 
 
+def _validate_pin(db: Session, project_id: int, pin_id: int | None):
+    if pin_id is None:
+        return
+    pin = db.query(Pin).join(Sheet, Pin.sheet_id == Sheet.id).filter(Pin.id == pin_id, Sheet.project_id == project_id).first()
+    if not pin:
+        raise HTTPException(status_code=400, detail="Pin must belong to the same project")
+
+
 def _validate_task(db: Session, project_id: int, task_id: int | None):
     if task_id is None:
         return
     task = db.get(Task, task_id)
     if not task or task.project_id != project_id:
         raise HTTPException(status_code=400, detail="Task must belong to the same project")
+
+
+def _validate_pin(db: Session, project_id: int, pin_id: int | None):
+    if pin_id is None:
+        return
+    pin = (
+        db.query(Pin)
+        .join(Sheet, Pin.sheet_id == Sheet.id)
+        .filter(Pin.id == pin_id, Sheet.project_id == project_id)
+        .first()
+    )
+    if not pin:
+        raise HTTPException(status_code=404, detail="Pin not found")
+    sheet = db.get(Sheet, pin.sheet_id)
+    if not sheet or sheet.project_id != project_id:
+        raise HTTPException(status_code=400, detail="Pin must belong to the same project")
 
 
 @router.post("", response_model=ScheduledJobOut)
@@ -102,11 +128,7 @@ async def create_scheduled_job(
     _validate_assignee(db, project_id, payload.assigned_to_id)
     _validate_depends_on(db, project_id, payload.depends_on_id)
     _validate_task(db, project_id, payload.task_id)
-
-    if payload.pin_id is not None:
-        pin = db.get(Pin, payload.pin_id)
-        if not pin:
-            raise HTTPException(status_code=404, detail="Pin not found")
+    _validate_pin(db, project_id, payload.pin_id)
 
     job = ScheduledJob(
         project_id=project_id,
@@ -175,6 +197,10 @@ async def update_scheduled_job(
         _validate_depends_on(db, project_id, update_data["depends_on_id"], self_id=job.id)
     if "task_id" in update_data:
         _validate_task(db, project_id, update_data["task_id"])
+    if "pin_id" in update_data:
+        _validate_pin(db, project_id, update_data["pin_id"])
+    if "pin_id" in update_data:
+        _validate_pin(db, project_id, update_data["pin_id"])
 
     previous_assignee_id = job.assigned_to_id
 

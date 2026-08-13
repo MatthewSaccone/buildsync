@@ -1,19 +1,76 @@
 import os
+import re
 from datetime import datetime, timezone
 
-from pydantic import BaseModel, EmailStr, computed_field, model_validator
+from pydantic import BaseModel, EmailStr, Field, computed_field, field_validator, model_validator
 
 from app.models.enums import UserRole, PinStatus, PinPriority, ProjectRole, JobStatus, TaskStatus
+
+
+# Shared password policy: min 10 chars, at least one letter and one digit.
+# Kept as a plain function (not a validator mixin) so it can be reused
+# across every schema that carries a raw new-password field.
+_PASSWORD_MIN_LENGTH = 10
+_PASSWORD_MAX_LENGTH = 128
+_MAX_ID = 2_147_483_647
+_MAX_QUANTITY = 1_000_000
+_MAX_PRICE = 100_000_000
+_MAX_DIMENSION = 1_000_000
+_MAX_LIST_ITEMS = 100
+_MAX_CATEGORIES = 20
+_MAX_WASTE_FACTOR = 1.0
+
+
+def _validate_non_blank(value: str, field_name: str = "Value") -> str:
+    value = value.strip()
+    if not value:
+        raise ValueError(f"{field_name} cannot be blank")
+    return value
+
+
+def _validate_optional_non_blank(value: str | None, field_name: str = "Value") -> str | None:
+    if value is None:
+        return None
+    return _validate_non_blank(value, field_name)
+
+
+def _validate_password_strength(password: str) -> str:
+    if len(password) < _PASSWORD_MIN_LENGTH:
+        raise ValueError(f"Password must be at least {_PASSWORD_MIN_LENGTH} characters")
+    if len(password) > _PASSWORD_MAX_LENGTH:
+        raise ValueError(f"Password must be at most {_PASSWORD_MAX_LENGTH} characters")
+    if len(password.encode("utf-8")) > 72:
+        raise ValueError("Password must be at most 72 UTF-8 bytes")
+    if not re.search(r"[A-Za-z]", password):
+        raise ValueError("Password must contain at least one letter")
+    if not re.search(r"\d", password):
+        raise ValueError("Password must contain at least one number")
+    return password
 
 
 # ---- Auth ----
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
-    full_name: str
-    company_name: str | None = None
+    full_name: str = Field(min_length=1, max_length=200)
+    company_name: str | None = Field(default=None, max_length=200)
     role: UserRole = UserRole.OTHER
-    phone: str | None = None
+    phone: str | None = Field(default=None, max_length=32)
+
+    @field_validator("full_name")
+    @classmethod
+    def _full_name_not_blank(cls, v: str) -> str:
+        return _validate_non_blank(v, "Full name")
+
+    @field_validator("company_name", "phone")
+    @classmethod
+    def _optional_strings_not_blank(cls, v: str | None) -> str | None:
+        return _validate_optional_non_blank(v)
+
+    @field_validator("password")
+    @classmethod
+    def _check_password(cls, v: str) -> str:
+        return _validate_password_strength(v)
 
 
 class UserOut(BaseModel):
@@ -48,31 +105,77 @@ class PasswordResetRequest(BaseModel):
 
 
 class PasswordResetConfirm(BaseModel):
-    token: str
+    token: str = Field(min_length=1, max_length=512)
     new_password: str
+
+    @field_validator("token")
+    @classmethod
+    def _token_not_blank(cls, v: str) -> str:
+        return _validate_non_blank(v, "Reset token")
+
+    @field_validator("new_password")
+    @classmethod
+    def _check_new_password(cls, v: str) -> str:
+        return _validate_password_strength(v)
 
 
 class UserUpdate(BaseModel):
-    full_name: str | None = None
-    company_name: str | None = None
-    role: UserRole | None = None
-    phone: str | None = None
+    # Role is intentionally not accepted here. Allowing a user to PATCH their
+    # own role would permit privilege escalation to an administrative role.
+    full_name: str | None = Field(default=None, min_length=1, max_length=200)
+    company_name: str | None = Field(default=None, min_length=1, max_length=200)
+    phone: str | None = Field(default=None, min_length=1, max_length=32)
+
+    @field_validator("full_name", "company_name", "phone")
+    @classmethod
+    def _profile_strings_not_blank(cls, v: str | None) -> str | None:
+        return _validate_optional_non_blank(v)
 
 
 class PasswordChange(BaseModel):
-    current_password: str
+    current_password: str = Field(min_length=1, max_length=_PASSWORD_MAX_LENGTH)
     new_password: str
+
+    @field_validator("current_password")
+    @classmethod
+    def _current_password_not_blank(cls, v: str) -> str:
+        return _validate_non_blank(v, "Current password")
+
+    @field_validator("new_password")
+    @classmethod
+    def _check_new_password(cls, v: str) -> str:
+        return _validate_password_strength(v)
 
 
 # ---- Projects ----
 class ProjectCreate(BaseModel):
-    name: str
-    address: str | None = None
+    name: str = Field(min_length=1, max_length=255)
+    address: str | None = Field(default=None, max_length=500)
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_blank(cls, v: str) -> str:
+        return _validate_non_blank(v, "Project name")
+
+    @field_validator("address")
+    @classmethod
+    def _address_not_blank(cls, v: str | None) -> str | None:
+        return _validate_optional_non_blank(v, "Address")
 
 
 class ProjectUpdate(BaseModel):
-    name: str | None = None
-    address: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    address: str | None = Field(default=None, min_length=1, max_length=500)
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_blank(cls, v: str | None) -> str | None:
+        return _validate_optional_non_blank(v, "Project name")
+
+    @field_validator("address")
+    @classmethod
+    def _address_not_blank(cls, v: str | None) -> str | None:
+        return _validate_optional_non_blank(v, "Address")
 
 
 class ProjectOut(BaseModel):
@@ -87,7 +190,7 @@ class ProjectOut(BaseModel):
 
 
 class ProjectMemberAdd(BaseModel):
-    user_id: int
+    user_id: int = Field(gt=0, le=_MAX_ID)
     role: ProjectRole = ProjectRole.MEMBER
 
 
@@ -127,30 +230,40 @@ class SheetOut(BaseModel):
 
 # ---- Pins ----
 class PinCreate(BaseModel):
-    sheet_id: int
-    x: float
-    y: float
-    title: str
+    sheet_id: int = Field(gt=0, le=_MAX_ID)
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    title: str = Field(min_length=1, max_length=255)
     trade: UserRole | None = None
     priority: PinPriority = PinPriority.NORMAL
-    assigned_to_id: int | None = None
+    assigned_to_id: int | None = Field(default=None, gt=0, le=_MAX_ID)
+
+    @field_validator("title")
+    @classmethod
+    def _title_not_blank(cls, v: str) -> str:
+        return _validate_non_blank(v, "Pin title")
 
 
 class PinUpdate(BaseModel):
     status: PinStatus | None = None
     priority: PinPriority | None = None
-    assigned_to_id: int | None = None
-    title: str | None = None
+    assigned_to_id: int | None = Field(default=None, gt=0, le=_MAX_ID)
+    title: str | None = Field(default=None, min_length=1, max_length=255)
     trade: UserRole | None = None
+
+    @field_validator("title")
+    @classmethod
+    def _title_not_blank(cls, v: str | None) -> str | None:
+        return _validate_optional_non_blank(v, "Pin title")
 
 
 class PinMaterialCreate(BaseModel):
-    material_variant_id: int
-    quantity: float = 1
+    material_variant_id: int = Field(gt=0, le=_MAX_ID)
+    quantity: float = Field(default=1, gt=0, le=_MAX_QUANTITY)
 
 
 class PinMaterialUpdate(BaseModel):
-    quantity: float
+    quantity: float = Field(gt=0, le=_MAX_QUANTITY)
 
 
 class PinMaterialOut(BaseModel):
@@ -237,8 +350,8 @@ class PinOut(BaseModel):
     assigned_to_id: int | None
     created_at: datetime
     resolved_at: datetime | None
-    materials: list[PinMaterialOut] = []
-    attachments: list[AttachmentOut] = []
+    materials: list[PinMaterialOut] = Field(default_factory=list)
+    attachments: list[AttachmentOut] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -251,7 +364,12 @@ class PinOut(BaseModel):
 
 # ---- Comments ----
 class CommentCreate(BaseModel):
-    body: str
+    body: str = Field(min_length=1, max_length=5_000)
+
+    @field_validator("body")
+    @classmethod
+    def _body_not_blank(cls, v: str) -> str:
+        return _validate_non_blank(v, "Comment")
 
 
 class CommentOut(BaseModel):
@@ -262,7 +380,7 @@ class CommentOut(BaseModel):
     body: str
     created_at: datetime
     author: UserOut
-    attachments: list[AttachmentOut] = []
+    attachments: list[AttachmentOut] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -270,7 +388,12 @@ class CommentOut(BaseModel):
 
 # ---- Messages ----
 class MessageCreate(BaseModel):
-    body: str
+    body: str = Field(min_length=1, max_length=5_000)
+
+    @field_validator("body")
+    @classmethod
+    def _body_not_blank(cls, v: str) -> str:
+        return _validate_non_blank(v, "Message")
 
 
 class DirectMessageOut(BaseModel):
@@ -283,7 +406,7 @@ class DirectMessageOut(BaseModel):
     created_at: datetime
     read_at: datetime | None
     sender: UserOut
-    attachments: list[AttachmentOut] = []
+    attachments: list[AttachmentOut] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -300,11 +423,21 @@ class ConversationOut(BaseModel):
 
 # ---- Channels ----
 class ChannelCreate(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=80)
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_blank(cls, v: str) -> str:
+        return _validate_non_blank(v, "Channel name")
 
 
 class ChannelRename(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=80)
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_blank(cls, v: str) -> str:
+        return _validate_non_blank(v, "Channel name")
 
 
 class ChannelOut(BaseModel):
@@ -325,7 +458,13 @@ class ChannelOut(BaseModel):
 
 
 class ChannelMessageCreate(BaseModel):
-    body: str
+    body: str = Field(min_length=1, max_length=5_000)
+    task_id: int | None = Field(default=None, gt=0, le=_MAX_ID)
+
+    @field_validator("body")
+    @classmethod
+    def _body_not_blank(cls, v: str) -> str:
+        return _validate_non_blank(v, "Message")
 
 
 class ChannelMessageOut(BaseModel):
@@ -336,7 +475,7 @@ class ChannelMessageOut(BaseModel):
     task_id: int | None = None
     created_at: datetime
     sender: UserOut
-    attachments: list[AttachmentOut] = []
+    attachments: list[AttachmentOut] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -382,17 +521,32 @@ class ChannelMuteOut(BaseModel):
 
 # ---- Materials ----
 class MaterialVariantCreate(BaseModel):
-    size: str
-    unit: str | None = None
-    price: float
-    sku: str | None = None
+    size: str = Field(min_length=1, max_length=100)
+    unit: str | None = Field(default=None, max_length=50)
+    price: float = Field(ge=0, le=_MAX_PRICE)
+    sku: str | None = Field(default=None, max_length=100)
+
+    @field_validator("size")
+    @classmethod
+    def _size_not_blank(cls, v: str) -> str:
+        return _validate_non_blank(v, "Material size")
+
+    @field_validator("unit", "sku")
+    @classmethod
+    def _optional_variant_strings_not_blank(cls, v: str | None) -> str | None:
+        return _validate_optional_non_blank(v)
 
 
 class MaterialVariantUpdate(BaseModel):
-    size: str | None = None
-    unit: str | None = None
-    price: float | None = None
-    sku: str | None = None
+    size: str | None = Field(default=None, min_length=1, max_length=100)
+    unit: str | None = Field(default=None, min_length=1, max_length=50)
+    price: float | None = Field(default=None, ge=0, le=_MAX_PRICE)
+    sku: str | None = Field(default=None, min_length=1, max_length=100)
+
+    @field_validator("size", "unit", "sku")
+    @classmethod
+    def _optional_variant_strings_not_blank(cls, v: str | None) -> str | None:
+        return _validate_optional_non_blank(v)
 
 
 class MaterialVariantOut(BaseModel):
@@ -409,16 +563,31 @@ class MaterialVariantOut(BaseModel):
 
 
 class MaterialCreate(BaseModel):
-    name: str
-    category: str | None = None
-    notes: str | None = None
-    variants: list[MaterialVariantCreate] = []
+    name: str = Field(min_length=1, max_length=200)
+    category: str | None = Field(default=None, max_length=100)
+    notes: str | None = Field(default=None, max_length=10_000)
+    variants: list[MaterialVariantCreate] = Field(default_factory=list, max_length=_MAX_LIST_ITEMS)
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_blank(cls, v: str) -> str:
+        return _validate_non_blank(v, "Material name")
+
+    @field_validator("category", "notes")
+    @classmethod
+    def _optional_material_strings_not_blank(cls, v: str | None) -> str | None:
+        return _validate_optional_non_blank(v)
 
 
 class MaterialUpdate(BaseModel):
-    name: str | None = None
-    category: str | None = None
-    notes: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    category: str | None = Field(default=None, min_length=1, max_length=100)
+    notes: str | None = Field(default=None, min_length=1, max_length=10_000)
+
+    @field_validator("name", "category", "notes")
+    @classmethod
+    def _optional_material_strings_not_blank(cls, v: str | None) -> str | None:
+        return _validate_optional_non_blank(v)
 
 
 class MaterialOut(BaseModel):
@@ -428,7 +597,7 @@ class MaterialOut(BaseModel):
     notes: str | None
     created_by_id: int
     created_at: datetime
-    variants: list[MaterialVariantOut] = []
+    variants: list[MaterialVariantOut] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -522,14 +691,19 @@ class SearchResults(BaseModel):
 
 # ---- Scheduled jobs (calendar / scheduler) ----
 class ScheduledJobCreate(BaseModel):
-    title: str
+    title: str = Field(min_length=1, max_length=255)
     trade: UserRole | None = None
-    pin_id: int | None = None
-    task_id: int | None = None
-    assigned_to_id: int | None = None
-    depends_on_id: int | None = None
+    pin_id: int | None = Field(default=None, gt=0, le=_MAX_ID)
+    task_id: int | None = Field(default=None, gt=0, le=_MAX_ID)
+    assigned_to_id: int | None = Field(default=None, gt=0, le=_MAX_ID)
+    depends_on_id: int | None = Field(default=None, gt=0, le=_MAX_ID)
     start_time: datetime
     end_time: datetime
+
+    @field_validator("title")
+    @classmethod
+    def _title_not_blank(cls, v: str) -> str:
+        return _validate_non_blank(v, "Scheduled job title")
 
     @model_validator(mode="after")
     def _check_times(self):
@@ -539,15 +713,35 @@ class ScheduledJobCreate(BaseModel):
 
 
 class ScheduledJobUpdate(BaseModel):
-    title: str | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=255)
     trade: UserRole | None = None
     status: JobStatus | None = None
-    pin_id: int | None = None
-    task_id: int | None = None
-    assigned_to_id: int | None = None
-    depends_on_id: int | None = None
+    pin_id: int | None = Field(default=None, gt=0, le=_MAX_ID)
+    task_id: int | None = Field(default=None, gt=0, le=_MAX_ID)
+    assigned_to_id: int | None = Field(default=None, gt=0, le=_MAX_ID)
+    depends_on_id: int | None = Field(default=None, gt=0, le=_MAX_ID)
     start_time: datetime | None = None
     end_time: datetime | None = None
+
+    @field_validator("title")
+    @classmethod
+    def _title_not_blank(cls, v: str | None) -> str | None:
+        if v is None:
+            raise ValueError("Scheduled job title cannot be null when provided")
+        return _validate_non_blank(v, "Scheduled job title")
+
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def _time_not_null(cls, v: datetime | None) -> datetime | None:
+        if v is None:
+            raise ValueError("Schedule times cannot be null when provided")
+        return v
+
+    @model_validator(mode="after")
+    def _check_times(self):
+        if self.start_time is not None and self.end_time is not None and self.end_time <= self.start_time:
+            raise ValueError("end_time must be after start_time")
+        return self
 
 
 class ScheduledJobOut(BaseModel):
@@ -588,12 +782,12 @@ class TaskPinRef(BaseModel):
 
 
 class TaskMaterialCreate(BaseModel):
-    material_variant_id: int
-    quantity: float = 1
+    material_variant_id: int = Field(gt=0, le=_MAX_ID)
+    quantity: float = Field(default=1, gt=0, le=_MAX_QUANTITY)
 
 
 class TaskMaterialUpdate(BaseModel):
-    quantity: float
+    quantity: float = Field(gt=0, le=_MAX_QUANTITY)
 
 
 class TaskMaterialOut(BaseModel):
@@ -639,22 +833,62 @@ class TaskMaterialOut(BaseModel):
 
 
 class TaskCreate(BaseModel):
-    title: str
-    description: str | None = None
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=20_000)
     priority: PinPriority = PinPriority.NORMAL
-    owner_id: int | None = None
+    owner_id: int | None = Field(default=None, gt=0, le=_MAX_ID)
     due_date: datetime | None = None
-    related_pin_ids: list[int] = []
+    related_pin_ids: list[int] = Field(default_factory=list, max_length=_MAX_LIST_ITEMS)
+
+    @field_validator("title")
+    @classmethod
+    def _title_not_blank(cls, v: str) -> str:
+        return _validate_non_blank(v, "Task title")
+
+    @field_validator("description")
+    @classmethod
+    def _description_not_blank(cls, v: str | None) -> str | None:
+        return _validate_optional_non_blank(v, "Task description")
+
+    @field_validator("related_pin_ids")
+    @classmethod
+    def _related_pin_ids_valid(cls, v: list[int]) -> list[int]:
+        if any(pin_id <= 0 or pin_id > _MAX_ID for pin_id in v):
+            raise ValueError("related_pin_ids must contain positive IDs")
+        if len(set(v)) != len(v):
+            raise ValueError("related_pin_ids cannot contain duplicates")
+        return v
 
 
 class TaskUpdate(BaseModel):
-    title: str | None = None
-    description: str | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = Field(default=None, min_length=1, max_length=20_000)
     status: TaskStatus | None = None
     priority: PinPriority | None = None
-    owner_id: int | None = None
+    owner_id: int | None = Field(default=None, gt=0, le=_MAX_ID)
     due_date: datetime | None = None
-    related_pin_ids: list[int] | None = None
+    related_pin_ids: list[int] | None = Field(default=None, max_length=_MAX_LIST_ITEMS)
+
+    @field_validator("title")
+    @classmethod
+    def _title_not_blank(cls, v: str | None) -> str | None:
+        return _validate_optional_non_blank(v, "Task title")
+
+    @field_validator("description")
+    @classmethod
+    def _description_not_blank(cls, v: str | None) -> str | None:
+        return _validate_optional_non_blank(v, "Task description")
+
+    @field_validator("related_pin_ids")
+    @classmethod
+    def _related_pin_ids_valid(cls, v: list[int] | None) -> list[int] | None:
+        if v is None:
+            return None
+        if any(pin_id <= 0 or pin_id > _MAX_ID for pin_id in v):
+            raise ValueError("related_pin_ids must contain positive IDs")
+        if len(set(v)) != len(v):
+            raise ValueError("related_pin_ids cannot contain duplicates")
+        return v
 
 
 class TaskOut(BaseModel):
@@ -670,10 +904,10 @@ class TaskOut(BaseModel):
     created_by_id: int
     created_at: datetime
     completed_at: datetime | None
-    comments: list[CommentOut] = []
-    attachments: list[AttachmentOut] = []
-    related_pins: list[TaskPinRef] = []
-    materials: list[TaskMaterialOut] = []
+    comments: list[CommentOut] = Field(default_factory=list)
+    attachments: list[AttachmentOut] = Field(default_factory=list)
+    related_pins: list[TaskPinRef] = Field(default_factory=list)
+    materials: list[TaskMaterialOut] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -686,20 +920,55 @@ class TaskOut(BaseModel):
 
 # ---- Estimates (drawing -> materials cost) ----
 class EstimateSessionCreate(BaseModel):
-    sheet_id: int
+    sheet_id: int = Field(gt=0, le=_MAX_ID)
 
 
 class DimensionConfirm(BaseModel):
     """User-confirmed values sent back after reviewing the raw extraction.
     Anything left null falls back to the extracted value if present."""
-    scale_ratio: float | None = None
-    wall_length_ft: float
-    wall_height_ft: float = 8.0
-    opening_sqft: float = 0.0
-    floor_area_sqft: float = 0.0
-    roof_area_sqft: float = 0.0
-    include_categories: list[str] | None = None
+    scale_ratio: float | None = Field(default=None, gt=0, le=100_000)
+    wall_length_ft: float = Field(ge=0, le=_MAX_DIMENSION)
+    wall_height_ft: float = Field(default=8.0, ge=0, le=_MAX_DIMENSION)
+    opening_sqft: float = Field(default=0.0, ge=0, le=_MAX_DIMENSION)
+    floor_area_sqft: float = Field(default=0.0, ge=0, le=_MAX_DIMENSION)
+    roof_area_sqft: float = Field(default=0.0, ge=0, le=_MAX_DIMENSION)
+    include_categories: list[str] | None = Field(default=None, max_length=_MAX_CATEGORIES)
     waste_factor_overrides: dict[str, float] | None = None
+
+    @field_validator("include_categories")
+    @classmethod
+    def _categories_valid(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return None
+        cleaned = [_validate_non_blank(category, "Estimate category") for category in v]
+        if len(set(cleaned)) != len(cleaned):
+            raise ValueError("include_categories cannot contain duplicates")
+        if any(len(category) > 50 for category in cleaned):
+            raise ValueError("Estimate category names must be at most 50 characters")
+        return cleaned
+
+    @field_validator("waste_factor_overrides")
+    @classmethod
+    def _waste_factors_valid(cls, v: dict[str, float] | None) -> dict[str, float] | None:
+        if v is None:
+            return None
+        if len(v) > _MAX_CATEGORIES:
+            raise ValueError(f"At most {_MAX_CATEGORIES} waste-factor overrides are allowed")
+        cleaned: dict[str, float] = {}
+        for category, factor in v.items():
+            category = _validate_non_blank(category, "Waste-factor category")
+            if len(category) > 50:
+                raise ValueError("Waste-factor category names must be at most 50 characters")
+            if factor < 0 or factor > _MAX_WASTE_FACTOR:
+                raise ValueError("Waste factors must be between 0 and 1")
+            cleaned[category] = factor
+        return cleaned
+
+    @model_validator(mode="after")
+    def _dimensions_are_consistent(self):
+        if self.opening_sqft > self.wall_length_ft * self.wall_height_ft:
+            raise ValueError("opening_sqft cannot exceed the gross wall area")
+        return self
 
 
 class MaterialOptionOut(BaseModel):
@@ -719,7 +988,7 @@ class EstimateLineOut(BaseModel):
     waste_factor: float
     purchase_quantity: float
     unit_price_snapshot: float | None
-    alternates: list[MaterialOptionOut] = []
+    alternates: list[MaterialOptionOut] = Field(default_factory=list)
     unmatched: bool
     user_overridden: bool
 
@@ -746,7 +1015,7 @@ class EstimateSessionOut(BaseModel):
     low_confidence_fields: list | None
     created_at: datetime
     finalized_at: datetime | None
-    lines: list[EstimateLineOut] = []
+    lines: list[EstimateLineOut] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -758,4 +1027,4 @@ class EstimateSessionOut(BaseModel):
 
 
 class EstimateLineOverride(BaseModel):
-    material_variant_id: int
+    material_variant_id: int = Field(gt=0, le=_MAX_ID)
