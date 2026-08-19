@@ -5,6 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.core.types import UTCDateTime
+from app.core.encrypted_type import EncryptedString
 from app.models.enums import UserRole
 
 
@@ -17,7 +18,7 @@ class User(Base):
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[UserRole] = mapped_column(SAEnum(UserRole), default=UserRole.OTHER)
-    phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    phone: Mapped[str | None] = mapped_column(EncryptedString(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
     project_memberships = relationship("ProjectMember", back_populates="user")

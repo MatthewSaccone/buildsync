@@ -85,6 +85,19 @@ class UserOut(BaseModel):
         from_attributes = True
 
 
+class UserBrief(BaseModel):
+    """Minimal user info for attribution (who posted/owns something) without
+    exposing contact details to every viewer of a comment, message, or task —
+    unlike UserOut, which is appropriate for an actual team-roster or DM
+    context where seeing a teammate's contact info is the point."""
+    id: int
+    full_name: str
+    role: UserRole
+
+    class Config:
+        from_attributes = True
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -379,7 +392,7 @@ class CommentOut(BaseModel):
     author_id: int
     body: str
     created_at: datetime
-    author: UserOut
+    author: UserBrief
     attachments: list[AttachmentOut] = Field(default_factory=list)
 
     class Config:
@@ -474,7 +487,7 @@ class ChannelMessageOut(BaseModel):
     body: str
     task_id: int | None = None
     created_at: datetime
-    sender: UserOut
+    sender: UserBrief
     attachments: list[AttachmentOut] = Field(default_factory=list)
 
     class Config:
@@ -899,7 +912,7 @@ class TaskOut(BaseModel):
     status: TaskStatus
     priority: PinPriority
     owner_id: int | None
-    owner: UserOut | None
+    owner: UserBrief | None
     due_date: datetime | None
     created_by_id: int
     created_at: datetime

@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     # safer) or allowed through with just extension/content-type checks
     # (fail open, more available)? Default fails closed in production.
     clamav_fail_open: bool = False
+    field_encryption_key: str = ""
 
     @property
     def database_url(self) -> str:
