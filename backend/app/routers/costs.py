@@ -1,7 +1,7 @@
 import csv
 import io
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -78,7 +78,7 @@ def _aggregate(db: Session, project_id: int, status: str | None) -> list[Materia
 @router.get("", response_model=ProjectCostSummary)
 def get_project_cost_summary(
     project_id: int,
-    status: str | None = None,
+    status: str | None = Query(default=None, max_length=30),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -93,7 +93,7 @@ def get_project_cost_summary(
 @router.get("/export")
 def export_materials_csv(
     project_id: int,
-    status: str | None = None,
+    status: str | None = Query(default=None, max_length=30),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):

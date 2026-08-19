@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
@@ -36,8 +36,8 @@ def _get_own_material(db: Session, material_id: int, user: User) -> Material:
 
 @router.get("", response_model=list[MaterialOut])
 def list_materials(
-    q: str | None = None,
-    category: str | None = None,
+    q: str | None = Query(default=None, max_length=200),
+    category: str | None = Query(default=None, max_length=100),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
