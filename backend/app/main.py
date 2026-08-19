@@ -25,7 +25,7 @@ app = FastAPI(title="BuildSync API")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-secure_headers = Secure()
+secure_headers = Secure.with_default_headers()
 
 
 @app.middleware("http")

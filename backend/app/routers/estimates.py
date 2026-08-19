@@ -153,7 +153,7 @@ def confirm_and_generate(
     raw_quantities = compute_raw_quantities(takeoff_input, payload.waste_factor_overrides)
 
     for raw in raw_quantities:
-        result = select_material(db, raw)
+        result = select_material(db, raw, user.id)
         if result.unmatched or result.chosen is None:
             db.add(EstimateLine(
                 session_id=session.id,

@@ -17,11 +17,16 @@ from app.schemas.schemas import (
 router = APIRouter(prefix="/materials", tags=["materials"])
 
 
-def _get_material(db: Session, material_id: int) -> Material:
+def _get_own_material(db: Session, material_id: int, user: User) -> Material:
+    """Materials are private per-user (different users may use different
+    suppliers/pricing), so every lookup is scoped to created_by_id == user.id.
+    A material that exists but belongs to someone else returns 404, not 403 —
+    this avoids confirming to a user that a given material_id exists at all
+    under someone else's account."""
     material = (
         db.query(Material)
         .options(selectinload(Material.variants))
-        .filter(Material.id == material_id)
+        .filter(Material.id == material_id, Material.created_by_id == user.id)
         .first()
     )
     if not material:
@@ -36,7 +41,11 @@ def list_materials(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    query = db.query(Material).options(selectinload(Material.variants))
+    query = (
+        db.query(Material)
+        .options(selectinload(Material.variants))
+        .filter(Material.created_by_id == user.id)
+    )
     if q:
         query = query.filter(Material.name.ilike(f"%{q}%"))
     if category:
@@ -62,7 +71,7 @@ def create_material(payload: MaterialCreate, db: Session = Depends(get_db), user
 
 @router.get("/{material_id}", response_model=MaterialOut)
 def get_material(material_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return _get_material(db, material_id)
+    return _get_own_material(db, material_id, user)
 
 
 @router.patch("/{material_id}", response_model=MaterialOut)
@@ -72,7 +81,7 @@ def update_material(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    material = _get_material(db, material_id)
+    material = _get_own_material(db, material_id, user)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(material, field, value)
     db.commit()
@@ -82,7 +91,7 @@ def update_material(
 
 @router.delete("/{material_id}", status_code=204)
 def delete_material(material_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    material = _get_material(db, material_id)
+    material = _get_own_material(db, material_id, user)
     db.delete(material)
     db.commit()
 
@@ -94,7 +103,7 @@ def add_variant(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    material = _get_material(db, material_id)
+    material = _get_own_material(db, material_id, user)
     material.variants.append(MaterialVariant(size=payload.size, unit=payload.unit, price=payload.price, sku=payload.sku))
     db.commit()
     db.refresh(material)
@@ -109,7 +118,7 @@ def update_variant(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    material = _get_material(db, material_id)
+    material = _get_own_material(db, material_id, user)
     variant = next((v for v in material.variants if v.id == variant_id), None)
     if not variant:
         raise HTTPException(status_code=404, detail="Variant not found")
@@ -127,7 +136,7 @@ def delete_variant(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    material = _get_material(db, material_id)
+    material = _get_own_material(db, material_id, user)
     variant = next((v for v in material.variants if v.id == variant_id), None)
     if not variant:
         raise HTTPException(status_code=404, detail="Variant not found")

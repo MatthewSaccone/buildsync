@@ -42,7 +42,7 @@ class SelectionResult:
     unmatched: bool
 
 
-def _candidates(db: Session, catalog_category: str, coverage_unit: str) -> list[MaterialVariant]:
+def _candidates(db: Session, catalog_category: str, coverage_unit: str, user_id: int) -> list[MaterialVariant]:
     return (
         db.query(MaterialVariant)
         .join(MaterialVariant.material)
@@ -50,7 +50,7 @@ def _candidates(db: Session, catalog_category: str, coverage_unit: str) -> list[
             MaterialVariant.coverage_value.isnot(None),
             MaterialVariant.coverage_unit == coverage_unit,
         )
-        .filter(MaterialVariant.material.has(category=catalog_category))
+        .filter(MaterialVariant.material.has(category=catalog_category, created_by_id=user_id))
         .all()
     )
 
@@ -69,15 +69,17 @@ def _to_option(variant: MaterialVariant, raw: RawQuantity) -> MaterialOption:
     )
 
 
-def select_material(db: Session, raw: RawQuantity) -> SelectionResult:
-    """Chooses the lowest total-cost option for this category, and returns up
+def select_material(db: Session, raw: RawQuantity, user_id: int) -> SelectionResult:
+    """Chooses the lowest total-cost option for this category from the
+    requesting user's own materials catalog (materials are private per-user
+    — different users may use different suppliers/pricing), and returns up
     to 2 additional alternates (mid/premium by price) so the user isn't
     locked into the automated pick. See selection_service module docstring."""
     mapping = CATEGORY_MATCH.get(raw.category)
     if not mapping:
         return SelectionResult(category=raw.category, chosen=None, alternates=[], unmatched=True)
 
-    variants = _candidates(db, mapping["catalog_category"], mapping["coverage_unit"])
+    variants = _candidates(db, mapping["catalog_category"], mapping["coverage_unit"], user_id)
     if not variants:
         return SelectionResult(category=raw.category, chosen=None, alternates=[], unmatched=True)
 
