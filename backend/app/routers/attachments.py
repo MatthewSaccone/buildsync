@@ -1,3 +1,4 @@
+import logging
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
@@ -6,7 +7,13 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
-from app.core.uploads import save_upload, save_upload_with_metadata, IMAGE_EXTENSIONS, CHAT_ATTACHMENT_EXTENSIONS
+from app.core.uploads import (
+    save_upload,
+    save_upload_with_metadata,
+    hash_file,
+    IMAGE_EXTENSIONS,
+    CHAT_ATTACHMENT_EXTENSIONS,
+)
 from app.models.attachment import Attachment
 from app.models.channel import Channel, ChannelMessage
 from app.models.comment import Comment
@@ -19,6 +26,7 @@ from app.models.user import User
 from app.schemas.schemas import AttachmentOut
 
 router = APIRouter(tags=["attachments"])
+logger = logging.getLogger(__name__)
 
 
 def _require_pin_membership(db: Session, pin_id: int, user_id: int) -> Pin:
@@ -93,9 +101,16 @@ def upload_pin_attachment(
     user: User = Depends(get_current_user),
 ):
     _require_pin_membership(db, pin_id, user.id)
-    stored_path = save_upload(file, IMAGE_EXTENSIONS)
+    stored_path, original_name, content_type, content_hash = save_upload_with_metadata(file, IMAGE_EXTENSIONS)
 
-    attachment = Attachment(pin_id=pin_id, file_path=stored_path, uploaded_by_id=user.id)
+    attachment = Attachment(
+        pin_id=pin_id,
+        file_path=stored_path,
+        original_filename=original_name,
+        content_type=content_type,
+        content_hash=content_hash,
+        uploaded_by_id=user.id,
+    )
     db.add(attachment)
     db.commit()
     db.refresh(attachment)
@@ -116,9 +131,16 @@ def upload_task_attachment(
     user: User = Depends(get_current_user),
 ):
     _require_task_membership(db, task_id, user.id)
-    stored_path = save_upload(file, IMAGE_EXTENSIONS)
+    stored_path, original_name, content_type, content_hash = save_upload_with_metadata(file, IMAGE_EXTENSIONS)
 
-    attachment = Attachment(task_id=task_id, file_path=stored_path, uploaded_by_id=user.id)
+    attachment = Attachment(
+        task_id=task_id,
+        file_path=stored_path,
+        original_filename=original_name,
+        content_type=content_type,
+        content_hash=content_hash,
+        uploaded_by_id=user.id,
+    )
     db.add(attachment)
     db.commit()
     db.refresh(attachment)
@@ -139,9 +161,16 @@ def upload_comment_attachment(
     user: User = Depends(get_current_user),
 ):
     _require_comment_membership(db, comment_id, user.id)
-    stored_path = save_upload(file, IMAGE_EXTENSIONS)
+    stored_path, original_name, content_type, content_hash = save_upload_with_metadata(file, IMAGE_EXTENSIONS)
 
-    attachment = Attachment(comment_id=comment_id, file_path=stored_path, uploaded_by_id=user.id)
+    attachment = Attachment(
+        comment_id=comment_id,
+        file_path=stored_path,
+        original_filename=original_name,
+        content_type=content_type,
+        content_hash=content_hash,
+        uploaded_by_id=user.id,
+    )
     db.add(attachment)
     db.commit()
     db.refresh(attachment)
@@ -164,13 +193,14 @@ def upload_message_attachment(
     """Attach a file to a DM (BS-103). Chat attachments accept photos, PDFs,
     and common office documents — a wider set than pin/task photo uploads."""
     _require_message_membership(db, message_id, user.id)
-    stored_path, original_name, content_type = save_upload_with_metadata(file, CHAT_ATTACHMENT_EXTENSIONS)
+    stored_path, original_name, content_type, content_hash = save_upload_with_metadata(file, CHAT_ATTACHMENT_EXTENSIONS)
 
     attachment = Attachment(
         message_id=message_id,
         file_path=stored_path,
         original_filename=original_name,
         content_type=content_type,
+        content_hash=content_hash,
         uploaded_by_id=user.id,
     )
     db.add(attachment)
@@ -194,13 +224,16 @@ def upload_channel_message_attachment(
 ):
     """Attach a file to a channel message (BS-103)."""
     _require_channel_message_membership(db, channel_message_id, user.id)
-    stored_path, original_name, content_type = save_upload_with_metadata(file, CHAT_ATTACHMENT_EXTENSIONS)
+    stored_path, original_name, content_type, content_hash = save_upload_with_metadata(
+        file, CHAT_ATTACHMENT_EXTENSIONS
+    )
 
     attachment = Attachment(
         channel_message_id=channel_message_id,
         file_path=stored_path,
         original_filename=original_name,
         content_type=content_type,
+        content_hash=content_hash,
         uploaded_by_id=user.id,
     )
     db.add(attachment)
@@ -248,6 +281,25 @@ def download_attachment(attachment_id: int, db: Session = Depends(get_db), user:
 
     if not os.path.exists(attachment.file_path):
         raise HTTPException(status_code=404, detail="File no longer exists on disk")
+
+    # Re-hash the file on disk and compare against the hash taken at upload
+    # time. A mismatch means the file was modified after upload (compromised
+    # process, bad deploy, direct disk tampering, etc) — refuse to serve it
+    # rather than silently handing back altered content. Attachments from
+    # before this feature shipped have no stored hash (content_hash is
+    # None), so there's nothing to verify against and they're served as-is.
+    if attachment.content_hash is not None:
+        current_hash = hash_file(attachment.file_path)
+        if current_hash != attachment.content_hash:
+            logger.error(
+                "Content hash mismatch for attachment %s at %s — possible tampering",
+                attachment.id,
+                attachment.file_path,
+            )
+            raise HTTPException(
+                status_code=409,
+                detail="This file has changed since it was uploaded and cannot be downloaded. Please contact support.",
+            )
 
     filename = attachment.original_filename or os.path.basename(attachment.file_path)
     return FileResponse(

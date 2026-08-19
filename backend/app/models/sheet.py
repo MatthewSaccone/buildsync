@@ -22,6 +22,10 @@ class Sheet(Base):
     root_sheet_id: Mapped[int] = mapped_column(ForeignKey("sheets.id"), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    # SHA-256 hex digest taken at upload time, after validation/malware
+    # scanning pass. Verified on download via the /download route so a file
+    # modified on disk after upload is caught rather than silently served.
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     uploaded_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     uploaded_at: Mapped[datetime] = mapped_column(UTCDateTime, default=lambda: datetime.now(timezone.utc), index=True)

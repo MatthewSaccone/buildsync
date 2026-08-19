@@ -1,3 +1,4 @@
+import hashlib
 import os
 import uuid
 import zipfile
@@ -116,16 +117,27 @@ def _validate_ooxml_zip(stored_path: str, ext: str) -> None:
         raise HTTPException(status_code=400, detail=f"File is not a valid {ext} document")
 
 
+def hash_file(path: str) -> str:
+    """Returns the SHA-256 hex digest of the file at `path`, read in chunks
+    so large files don't get loaded into memory all at once."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        while chunk := f.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def save_upload(file: UploadFile, allowed_extensions: set[str]) -> str:
     """Validates extension + size, writes to disk, returns the stored file path."""
-    stored_path, _, _ = save_upload_with_metadata(file, allowed_extensions)
+    stored_path, _, _, _ = save_upload_with_metadata(file, allowed_extensions)
     return stored_path
 
 
-def save_upload_with_metadata(file: UploadFile, allowed_extensions: set[str]) -> tuple[str, str, str | None]:
-    """Same as save_upload, but also returns the original filename and content
-    type so callers (e.g. chat attachments) can preserve them for display and
-    download, since the on-disk filename is a randomized UUID."""
+def save_upload_with_metadata(file: UploadFile, allowed_extensions: set[str]) -> tuple[str, str, str | None, str]:
+    """Same as save_upload, but also returns the original filename, content
+    type, and a SHA-256 hash of the validated file's bytes — the hash lets
+    callers detect later on-disk tampering (see content_hash on Attachment).
+    The on-disk filename itself is a randomized UUID."""
     original_name = file.filename or "upload"
     ext = os.path.splitext(original_name)[1].lower()
     if ext not in allowed_extensions:
@@ -159,4 +171,8 @@ def save_upload_with_metadata(file: UploadFile, allowed_extensions: set[str]) ->
     # embedded exploits, etc).
     scan_file(stored_path)
 
-    return stored_path, original_name, file.content_type
+    # Hash last, after content validation and malware scanning both pass —
+    # this is the "known good" fingerprint we'll check downloads against.
+    content_hash = hash_file(stored_path)
+
+    return stored_path, original_name, file.content_type, content_hash

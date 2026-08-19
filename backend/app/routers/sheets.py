@@ -1,11 +1,13 @@
+import logging
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
-from app.core.uploads import save_upload, SHEET_EXTENSIONS
+from app.core.uploads import save_upload_with_metadata, hash_file, SHEET_EXTENSIONS
 from app.models.project import ProjectMember
 from app.models.sheet import Sheet
 from app.models.user import User
@@ -13,6 +15,7 @@ from app.schemas.schemas import SheetOut
 from app.services.activity_service import ActivityKind, log_activity
 
 router = APIRouter(prefix="/projects/{project_id}/sheets", tags=["sheets"])
+logger = logging.getLogger(__name__)
 
 
 def _validate_title(title: str) -> str:
@@ -46,12 +49,13 @@ async def upload_sheet(
     """Upload a brand-new sheet (starts a new version family at v1)."""
     _require_membership(db, project_id, user.id)
     title = _validate_title(title)
-    stored_path = save_upload(file, SHEET_EXTENSIONS)
+    stored_path, _, _, content_hash = save_upload_with_metadata(file, SHEET_EXTENSIONS)
 
     sheet = Sheet(
         project_id=project_id,
         title=title,
         file_path=stored_path,
+        content_hash=content_hash,
         version=1,
         uploaded_by_id=user.id,
     )
@@ -71,6 +75,46 @@ async def upload_sheet(
     )
 
     return sheet
+
+
+@router.get("/{sheet_id}/download")
+def download_sheet(
+    project_id: int,
+    sheet_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Streams a sheet's file back after verifying it hasn't been altered on
+    disk since upload. Prefer this over the raw /static/uploads/... URL,
+    which bypasses this check entirely."""
+    _require_membership(db, project_id, user.id)
+    sheet = db.get(Sheet, sheet_id)
+    if not sheet or sheet.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Sheet not found")
+
+    if not os.path.exists(sheet.file_path):
+        raise HTTPException(status_code=404, detail="File no longer exists on disk")
+
+    # Re-hash the file on disk and compare against the hash taken at upload
+    # time. A mismatch means the file was modified after upload — refuse to
+    # serve it rather than silently handing back altered content. Sheets
+    # from before this feature shipped have no stored hash and are served
+    # as-is, since there's nothing to verify against.
+    if sheet.content_hash is not None:
+        current_hash = hash_file(sheet.file_path)
+        if current_hash != sheet.content_hash:
+            logger.error(
+                "Content hash mismatch for sheet %s at %s — possible tampering",
+                sheet.id,
+                sheet.file_path,
+            )
+            raise HTTPException(
+                status_code=409,
+                detail="This file has changed since it was uploaded and cannot be downloaded. Please contact support.",
+            )
+
+    filename = os.path.basename(sheet.file_path)
+    return FileResponse(sheet.file_path, filename=filename)
 
 
 @router.get("", response_model=list[SheetOut])
@@ -106,7 +150,7 @@ def upload_new_version(
         raise HTTPException(status_code=404, detail="Sheet not found")
 
     title = _validate_title(title) if title is not None else None
-    stored_path = save_upload(file, SHEET_EXTENSIONS)
+    stored_path, _, _, content_hash = save_upload_with_metadata(file, SHEET_EXTENSIONS)
 
     latest_version = (
         db.query(Sheet)
@@ -120,6 +164,7 @@ def upload_new_version(
         root_sheet_id=existing.root_sheet_id,
         title=title or existing.title,
         file_path=stored_path,
+        content_hash=content_hash,
         version=(latest_version.version if latest_version else existing.version) + 1,
         uploaded_by_id=user.id,
     )
