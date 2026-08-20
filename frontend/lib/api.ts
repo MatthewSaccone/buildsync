@@ -395,8 +395,12 @@ export async function fetchWithAuth(url: string, options: RequestInit = {}, _ret
 // Auth API
 // ==========================================
 
-export async function login(credentials: { email: string; password: string } | FormData) {
+export async function login(
+  credentials: { email: string; password: string; turnstile_token?: string | null } | FormData,
+  turnstileToken?: string | null
+) {
   let body: FormData;
+  let token: string | null | undefined = turnstileToken;
 
   if (credentials instanceof FormData) {
     body = credentials;
@@ -407,10 +411,12 @@ export async function login(credentials: { email: string; password: string } | F
     body = new FormData();
     body.append("username", credentials.email);
     body.append("password", credentials.password);
+    token = credentials.turnstile_token ?? turnstileToken;
   }
 
   const res = await fetch(`${API_URL}/auth/login`, {
     method: "POST",
+    headers: token ? { "X-Turnstile-Token": token } : undefined,
     body: body,
   });
 
@@ -450,6 +456,7 @@ export async function signup(userData: {
   role?: string;
   company_name?: string;
   phone?: string;
+  turnstile_token?: string | null;
 }) {
   const fullName = [userData.first_name, userData.last_name]
     .filter(Boolean)

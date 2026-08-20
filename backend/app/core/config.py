@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # (fail open, more available)? Default fails closed in production.
     clamav_fail_open: bool = False
     field_encryption_key: str = ""
+    turnstile_secret_key: str = ""
 
     @property
     def database_url(self) -> str:

@@ -56,6 +56,7 @@ class UserCreate(BaseModel):
     company_name: str | None = Field(default=None, max_length=200)
     role: UserRole = UserRole.OTHER
     phone: str | None = Field(default=None, max_length=32)
+    turnstile_token: str | None = None
 
     @field_validator("full_name")
     @classmethod

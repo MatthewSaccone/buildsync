@@ -1,9 +1,10 @@
 from datetime import datetime, timezone, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Header
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
+from app.core.turnstile import verify_turnstile
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.config import settings
@@ -96,7 +97,10 @@ def lookup_by_email(email: str, db: Session = Depends(get_db), user: User = Depe
 
 @router.post("/signup", response_model=UserOut)
 @limiter.limit("5/hour")
-def signup(request: Request, payload: UserCreate, db: Session = Depends(get_db)):
+async def signup(request: Request, payload: UserCreate, db: Session = Depends(get_db)):
+    if not await verify_turnstile(payload.turnstile_token, request.client.host if request.client else None):
+        raise HTTPException(status_code=400, detail="Bot verification failed")
+
     if db.query(User).filter(User.email == payload.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -116,7 +120,15 @@ def signup(request: Request, payload: UserCreate, db: Session = Depends(get_db))
 
 @router.post("/login", response_model=TokenPair)
 @limiter.limit("5/minute")
-def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+async def login(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+    x_turnstile_token: str | None = Header(default=None),
+):
+    if not await verify_turnstile(x_turnstile_token, request.client.host if request.client else None):
+        raise HTTPException(status_code=400, detail="Bot verification failed")
+
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
@@ -133,7 +145,20 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
     row = db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).first()
 
     invalid = HTTPException(status_code=401, detail="Invalid or expired refresh token")
-    if not row or row.revoked or row.expires_at < datetime.utcnow():
+    if not row:
+        raise invalid
+
+    if row.revoked:
+        # This token was already used once and rotated out -- someone is
+        # presenting a stale/stolen token. Treat as a possible compromise:
+        # kill every active session for this user, not just this one.
+        db.query(RefreshToken).filter(
+            RefreshToken.user_id == row.user_id, RefreshToken.revoked == False  # noqa: E712
+        ).update({"revoked": True})
+        db.commit()
+        raise invalid
+
+    if row.expires_at < datetime.utcnow():
         raise invalid
 
     user = db.get(User, row.user_id)

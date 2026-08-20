@@ -17,7 +17,6 @@ from app.core.limiter import limiter
 from app.routers import auth, projects, sheets, pins, comments, notifications, websocket, materials, pin_materials, costs, attachments, messages, schedule, tasks, task_materials, channels, estimates
 import app.models  # noqa: F401 ensures all models are registered before create_all
 
-Base.metadata.create_all(bind=engine)
 os.makedirs(settings.upload_dir, exist_ok=True)
 
 app = FastAPI(title="BuildSync API")
@@ -25,7 +24,15 @@ app = FastAPI(title="BuildSync API")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-secure_headers = Secure.with_default_headers()
+# HSTS tells the browser "always use HTTPS for this origin, remember that for
+# up to a year" -- sending it in local dev (which only serves plain HTTP)
+# gets that instruction cached by the browser and breaks localhost until it's
+# manually cleared (chrome://net-internals/#hsts). Only send full default
+# headers (including HSTS) in production; skip HSTS specifically in debug.
+if settings.debug:
+    secure_headers = Secure()
+else:
+    secure_headers = Secure.with_default_headers()
 
 
 @app.middleware("http")
