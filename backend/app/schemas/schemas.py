@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel, EmailStr, Field, computed_field, field_validator, model_validator
 
 from app.models.enums import UserRole, PinStatus, PinPriority, ProjectRole, JobStatus, TaskStatus
+from app.core.file_signing import sign_file_path
 
 
 # Shared password policy: min 10 chars, at least one letter and one digit.
@@ -232,6 +233,7 @@ class SheetOut(BaseModel):
     version: int
     uploaded_by_id: int
     uploaded_at: datetime
+    url: str  # set explicitly by the router via build_file_url(), not computed here — needs the requesting user's id, which isn't available inside the model
 
     class Config:
         from_attributes = True
@@ -239,7 +241,9 @@ class SheetOut(BaseModel):
     @computed_field
     @property
     def url(self) -> str:
-        return f"/static/uploads/{os.path.basename(self.file_path)}"
+        filename = os.path.basename(self.file_path)
+        expires, signature = sign_file_path(filename)
+        return f"/files/{filename}?expires={expires}&signature={signature}"
 
 
 # ---- Pins ----
@@ -342,7 +346,9 @@ class AttachmentOut(BaseModel):
     @computed_field
     @property
     def url(self) -> str:
-        return f"/static/uploads/{os.path.basename(self.file_path)}"
+        filename = os.path.basename(self.file_path)
+        expires, signature = sign_file_path(filename, self.uploaded_by_id)
+        return f"/files/{filename}?user_id={self.uploaded_by_id}&expires={expires}&signature={signature}"
 
     @computed_field
     @property

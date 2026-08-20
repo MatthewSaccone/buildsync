@@ -40,7 +40,7 @@ def _require_sheet_membership(db: Session, sheet_id: int, user_id: int) -> Sheet
     )
     if not membership:
         raise HTTPException(status_code=403, detail="Not a member of this project")
-    return sheet
+    return SheetOut(**sheet.__dict__, url=build_file_url(sheet.file_path, user.id))
 
 
 @router.post("", response_model=PinOut)

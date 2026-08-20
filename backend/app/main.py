@@ -3,7 +3,6 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 
 from slowapi import _rate_limit_exceeded_handler
@@ -14,7 +13,7 @@ from secure import Secure
 from app.core.config import settings
 from app.core.database import Base, engine
 from app.core.limiter import limiter
-from app.routers import auth, projects, sheets, pins, comments, notifications, websocket, materials, pin_materials, costs, attachments, messages, schedule, tasks, task_materials, channels, estimates
+from app.routers import auth, projects, sheets, pins, comments, notifications, websocket, materials, pin_materials, costs, attachments, messages, schedule, tasks, task_materials, channels, estimates, files
 import app.models  # noqa: F401 ensures all models are registered before create_all
 
 os.makedirs(settings.upload_dir, exist_ok=True)
@@ -78,9 +77,7 @@ app.include_router(tasks.router)
 app.include_router(tasks.task_comments_router)
 app.include_router(task_materials.router)
 app.include_router(estimates.router)
-
-# Uploaded plan/photo sheets, served so the frontend can render them directly.
-app.mount("/static/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
+app.include_router(files.router)
 
 
 @app.get("/health")

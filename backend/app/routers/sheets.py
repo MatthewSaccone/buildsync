@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from app.core.file_signing import build_file_url
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.uploads import save_upload_with_metadata, hash_file, SHEET_EXTENSIONS
@@ -74,7 +75,7 @@ async def upload_sheet(
         extra={"sheet_id": sheet.id},
     )
 
-    return sheet
+    return SheetOut(**sheet.__dict__, url=build_file_url(sheet.file_path, user.id))
 
 
 @router.get("/{sheet_id}/download")

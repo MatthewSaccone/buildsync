@@ -1023,12 +1023,9 @@ export function sheetImageUrl(sheet: Sheet | string | number): string {
   if (typeof sheet === "object" && sheet.url) {
     return `${API_URL}${sheet.url}`;
   }
-  if (typeof sheet === "object") {
-    const filename = sheet.file_path.split("/").pop();
-    return `${API_URL}/static/uploads/${filename}`;
-  }
-  // Bare id with no Sheet object available — nothing we can construct reliably.
-  return "";
+  // fallback path (string/number) can no longer construct a valid signed URL
+  // client-side -- if this branch is hit, the caller needs the full Sheet object instead
+  throw new Error("sheetImageUrl requires a Sheet object with a signed url from the API");
 }
 
 export async function searchProject(
