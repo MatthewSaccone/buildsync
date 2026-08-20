@@ -75,7 +75,10 @@ def start_estimate(
         session.notes = str(e)
         db.commit()
         db.refresh(session)
-        raise HTTPException(status_code=422, detail=f"Could not extract dimensions: {e}")
+        # Full error is saved server-side in session.notes for debugging;
+        # the client only needs to know it failed, not internal details
+        # like file paths or library-internal error text.
+        raise HTTPException(status_code=422, detail="Could not extract dimensions from this drawing. It may be an unsupported format or unreadable.")
 
     low_confidence = [
         field for field, level in (extraction.get("confidence") or {}).items() if level == "low"
