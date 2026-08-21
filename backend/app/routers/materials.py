@@ -12,9 +12,27 @@ from app.schemas.schemas import (
     MaterialVariantCreate,
     MaterialVariantUpdate,
     MaterialVariantOut,
+    CoverageDefaultOut,
 )
+from app.services.selection_service import COVERAGE_DEFAULTS
 
 router = APIRouter(prefix="/materials", tags=["materials"])
+
+
+@router.get("/coverage-defaults", response_model=list[CoverageDefaultOut])
+def list_coverage_defaults(user: User = Depends(get_current_user)):
+    """Suggested coverage_value per (category, coverage_unit), for pre-filling
+    the material form. Not authoritative -- the user can and should override
+    when their real product's coverage differs from the typical default."""
+    return [
+        CoverageDefaultOut(
+            catalog_category=cat,
+            coverage_unit=unit,
+            coverage_value=data["coverage_value"],
+            label=data["label"],
+        )
+        for (cat, unit), data in COVERAGE_DEFAULTS.items()
+    ]
 
 
 def _get_own_material(db: Session, material_id: int, user: User) -> Material:

@@ -238,11 +238,6 @@ class SheetOut(BaseModel):
     class Config:
         from_attributes = True
 
-    @computed_field
-    @property
-    def url(self) -> str:
-        return f"/static/uploads/{os.path.basename(self.file_path)}"
-
 
 # ---- Pins ----
 class PinCreate(BaseModel):
@@ -601,6 +596,13 @@ class MaterialVariantOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class CoverageDefaultOut(BaseModel):
+    catalog_category: str
+    coverage_unit: str
+    coverage_value: float
+    label: str
 
 
 class MaterialCreate(BaseModel):

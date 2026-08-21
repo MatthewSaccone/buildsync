@@ -1063,6 +1063,22 @@ export const MATERIAL_CATALOG_CATEGORIES = ["framing", "drywall", "paint", "roof
 export const COVERAGE_UNITS = ["sqft", "linear_ft", "cuft", "cuyd", "gallon", "square", "each"] as const;
 export type CoverageUnit = (typeof COVERAGE_UNITS)[number];
 
+export interface CoverageDefault {
+  catalog_category: string;
+  coverage_unit: CoverageUnit;
+  coverage_value: number;
+  label: string;
+}
+
+/** Suggested coverage_value/coverage_unit per catalog category, for
+ * pre-filling the material form. NOT authoritative — always a suggestion the
+ * user can override, since real products vary from the typical spec this
+ * default is based on (e.g. a 4x10 drywall sheet instead of 4x8). */
+export async function getCoverageDefaults(): Promise<CoverageDefault[]> {
+  const res = await fetchWithAuth(`${API_URL}/materials/coverage-defaults`);
+  return res.json();
+}
+
 export async function createMaterial(data: {
   name: string;
   category?: string;

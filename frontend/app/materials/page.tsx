@@ -12,11 +12,13 @@ import {
   addMaterialVariant,
   updateMaterialVariant,
   deleteMaterialVariant,
+  getCoverageDefaults,
   ApiError,
   MATERIAL_CATALOG_CATEGORIES,
   COVERAGE_UNITS,
   type Material,
   type CoverageUnit,
+  type CoverageDefault,
 } from "@/lib/api";
 
 function formatPrice(price: number): string {
@@ -43,6 +45,10 @@ export default function MaterialsPage() {
   const [price, setPrice] = useState("");
   const [coverageValue, setCoverageValue] = useState("");
   const [coverageUnit, setCoverageUnit] = useState<CoverageUnit | "">("");
+  // True until the user manually edits coverage — lets us auto-fill from the
+  // category default without ever clobbering something they actually typed.
+  const [coverageTouched, setCoverageTouched] = useState(false);
+  const [coverageDefaults, setCoverageDefaults] = useState<CoverageDefault[]>([]);
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -59,9 +65,27 @@ export default function MaterialsPage() {
     if (!user) return;
 
     refresh();
+    getCoverageDefaults()
+      .then(setCoverageDefaults)
+      .catch(() => {
+        // Non-critical — the form just falls back to fully manual entry.
+      });
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  // Auto-fill coverage when the category changes to one with exactly one
+  // unambiguous default (framing has two possible units — each/linear_ft —
+  // so it's left for the user to pick rather than guessing which one).
+  // Never overwrites a value the user already typed themselves.
+  useEffect(() => {
+    if (coverageTouched || !category) return;
+    const matches = coverageDefaults.filter((d) => d.catalog_category === category);
+    if (matches.length === 1) {
+      setCoverageValue(String(matches[0].coverage_value));
+      setCoverageUnit(matches[0].coverage_unit);
+    }
+  }, [category, coverageDefaults, coverageTouched]);
 
   function refresh(q?: string) {
     setFetching(true);
@@ -286,7 +310,10 @@ export default function MaterialsPage() {
                 Coverage (optional, but required for auto-estimates)
               </label>
               <p className="label-mono mb-2" style={{ opacity: 0.7 }}>
-                How much real-world area/length one unit of this size covers — e.g. a 4x8 drywall sheet covers 32 sqft
+                How much real-world area/length one unit of this size covers — e.g. a 4x8 drywall sheet covers 32 sqft.
+                {category && coverageDefaults.some((d) => d.catalog_category === category) && !coverageTouched && (
+                  <> Pre-filled from a typical default for &ldquo;{category}&rdquo; — adjust if your product differs.</>
+                )}
               </p>
               <div className="grid grid-cols-2 gap-2">
                 <input
@@ -296,17 +323,19 @@ export default function MaterialsPage() {
                   step="any"
                   min="0"
                   value={coverageValue}
-                  onChange={(e) =>
-                    setCoverageValue(e.target.value)
-                  }
+                  onChange={(e) => {
+                    setCoverageTouched(true);
+                    setCoverageValue(e.target.value);
+                  }}
                 />
 
                 <select
                   className="field"
                   value={coverageUnit}
-                  onChange={(e) =>
-                    setCoverageUnit(e.target.value as CoverageUnit | "")
-                  }
+                  onChange={(e) => {
+                    setCoverageTouched(true);
+                    setCoverageUnit(e.target.value as CoverageUnit | "");
+                  }}
                 >
                   <option value="">No coverage unit</option>
                   {COVERAGE_UNITS.map((u) => (

@@ -23,6 +23,27 @@ CATEGORY_MATCH: dict[str, dict] = {
     "concrete": {"catalog_category": "concrete", "coverage_unit": "cuyd"},
 }
 
+# Sensible starting coverage values per catalog category, for pre-filling
+# the materials form -- NOT authoritative. These are typical industry specs
+# (e.g. a standard 4x8 drywall sheet = 32 sqft) meant to save users from
+# guessing on the common case; actual products vary (a 4x10 sheet, a 5-gal
+# paint bucket, etc.) and the user can and should override the value when
+# their real product differs. One entry per catalog_category; framing has
+# two coverage_units (studs are "each", plates are "linear_ft") so it's
+# keyed by (catalog_category, coverage_unit) instead of catalog_category alone.
+COVERAGE_DEFAULTS: dict[tuple[str, str], dict] = {
+    ("framing", "each"): {"coverage_value": 1, "label": "1 stud = 1 each"},
+    ("framing", "linear_ft"): {"coverage_value": 1, "label": "1 linear ft of plate = 1 linear ft"},
+    ("drywall", "sqft"): {"coverage_value": 32, "label": "Standard 4x8 sheet = 32 sqft"},
+    ("paint", "gallon"): {"coverage_value": 350, "label": "1 gallon covers ~350 sqft (1 coat)"},
+    ("roofing", "square"): {"coverage_value": 100, "label": "1 roofing square = 100 sqft"},
+    ("concrete", "cuyd"): {"coverage_value": 1, "label": "Priced/ordered per cubic yard"},
+}
+
+
+def get_coverage_default(catalog_category: str, coverage_unit: str) -> dict | None:
+    return COVERAGE_DEFAULTS.get((catalog_category, coverage_unit))
+
 
 @dataclass
 class MaterialOption:
