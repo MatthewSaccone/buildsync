@@ -77,6 +77,8 @@ export interface MaterialVariant {
   unit: string | null;
   price: number;
   sku: string | null;
+  coverage_value: number | null;
+  coverage_unit: string | null;
   updated_at: string;
 }
 
@@ -1023,9 +1025,12 @@ export function sheetImageUrl(sheet: Sheet | string | number): string {
   if (typeof sheet === "object" && sheet.url) {
     return `${API_URL}${sheet.url}`;
   }
-  // fallback path (string/number) can no longer construct a valid signed URL
-  // client-side -- if this branch is hit, the caller needs the full Sheet object instead
-  throw new Error("sheetImageUrl requires a Sheet object with a signed url from the API");
+  if (typeof sheet === "object") {
+    const filename = sheet.file_path.split("/").pop();
+    return `${API_URL}/static/uploads/${filename}`;
+  }
+  // Bare id with no Sheet object available — nothing we can construct reliably.
+  return "";
 }
 
 export async function searchProject(
@@ -1049,11 +1054,27 @@ export async function listMaterials(filters?: { q?: string; category?: string })
   return res.json();
 }
 
+/** Matches backend selection_service.py CATEGORY_MATCH catalog_category values —
+ * a material's `category` must be one of these for the estimate engine to ever
+ * select it. Keep in sync. */
+export const MATERIAL_CATALOG_CATEGORIES = ["framing", "drywall", "paint", "roofing", "concrete"] as const;
+
+/** Matches backend _COVERAGE_UNITS in schemas.py — keep in sync. */
+export const COVERAGE_UNITS = ["sqft", "linear_ft", "cuft", "cuyd", "gallon", "square", "each"] as const;
+export type CoverageUnit = (typeof COVERAGE_UNITS)[number];
+
 export async function createMaterial(data: {
   name: string;
   category?: string;
   notes?: string;
-  variants?: { size: string; unit?: string; price: number; sku?: string }[];
+  variants?: {
+    size: string;
+    unit?: string;
+    price: number;
+    sku?: string;
+    coverage_value?: number;
+    coverage_unit?: CoverageUnit;
+  }[];
 }): Promise<Material> {
   const res = await fetchWithAuth(`${API_URL}/materials`, {
     method: "POST",
@@ -1085,7 +1106,14 @@ export async function deleteMaterial(id: number): Promise<void> {
  * array), not the single variant — that's what the backend actually sends back. */
 export async function addMaterialVariant(
   materialId: number,
-  data: { size: string; unit?: string; price: number; sku?: string }
+  data: {
+    size: string;
+    unit?: string;
+    price: number;
+    sku?: string;
+    coverage_value?: number;
+    coverage_unit?: CoverageUnit;
+  }
 ): Promise<Material> {
   const res = await fetchWithAuth(`${API_URL}/materials/${materialId}/variants`, {
     method: "POST",
@@ -1098,7 +1126,14 @@ export async function addMaterialVariant(
 export async function updateMaterialVariant(
   materialId: number,
   variantId: number,
-  data: Partial<{ size: string; unit: string; price: number; sku: string }>
+  data: Partial<{
+    size: string;
+    unit: string;
+    price: number;
+    sku: string;
+    coverage_value: number;
+    coverage_unit: CoverageUnit;
+  }>
 ): Promise<Material> {
   const res = await fetchWithAuth(`${API_URL}/materials/${materialId}/variants/${variantId}`, {
     method: "PATCH",

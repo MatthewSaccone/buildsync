@@ -13,7 +13,10 @@ import {
   updateMaterialVariant,
   deleteMaterialVariant,
   ApiError,
+  MATERIAL_CATALOG_CATEGORIES,
+  COVERAGE_UNITS,
   type Material,
+  type CoverageUnit,
 } from "@/lib/api";
 
 function formatPrice(price: number): string {
@@ -38,6 +41,8 @@ export default function MaterialsPage() {
   const [size, setSize] = useState("");
   const [unit, setUnit] = useState("");
   const [price, setPrice] = useState("");
+  const [coverageValue, setCoverageValue] = useState("");
+  const [coverageUnit, setCoverageUnit] = useState<CoverageUnit | "">("");
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -80,6 +85,7 @@ export default function MaterialsPage() {
 
     try {
       const priceNum = parseFloat(price);
+      const coverageNum = parseFloat(coverageValue);
 
       const material = await createMaterial({
         name,
@@ -90,6 +96,9 @@ export default function MaterialsPage() {
                 size,
                 unit: unit || undefined,
                 price: isNaN(priceNum) ? 0 : priceNum,
+                coverage_value:
+                  coverageUnit && !isNaN(coverageNum) ? coverageNum : undefined,
+                coverage_unit: coverageUnit || undefined,
               },
             ]
           : [],
@@ -106,6 +115,8 @@ export default function MaterialsPage() {
       setSize("");
       setUnit("");
       setPrice("");
+      setCoverageValue("");
+      setCoverageUnit("");
 
       setShowForm(false);
       setExpandedId(material.id);
@@ -157,7 +168,7 @@ export default function MaterialsPage() {
             </h1>
 
             <p className="label-mono mt-1">
-              Shared across all your projects
+              Your private catalog — only you can see or edit these
             </p>
           </div>
 
@@ -217,12 +228,21 @@ export default function MaterialsPage() {
 
               <input
                 className="field"
-                placeholder="e.g. electrical, plumbing, lumber"
+                list="material-catalog-categories"
+                placeholder="e.g. framing, drywall, paint"
                 value={category}
                 onChange={(e) =>
                   setCategory(e.target.value)
                 }
               />
+              <datalist id="material-catalog-categories">
+                {MATERIAL_CATALOG_CATEGORIES.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+              <p className="label-mono mt-1" style={{ opacity: 0.7 }}>
+                Use one of: {MATERIAL_CATALOG_CATEGORIES.join(", ")} — only these are picked up by auto-estimates
+              </p>
             </div>
 
             <p className="label-mono">
@@ -259,6 +279,43 @@ export default function MaterialsPage() {
                   setPrice(e.target.value)
                 }
               />
+            </div>
+
+            <div>
+              <label className="label-mono mb-1 block">
+                Coverage (optional, but required for auto-estimates)
+              </label>
+              <p className="label-mono mb-2" style={{ opacity: 0.7 }}>
+                How much real-world area/length one unit of this size covers — e.g. a 4x8 drywall sheet covers 32 sqft
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  className="field"
+                  placeholder="Coverage amount, e.g. 32"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={coverageValue}
+                  onChange={(e) =>
+                    setCoverageValue(e.target.value)
+                  }
+                />
+
+                <select
+                  className="field"
+                  value={coverageUnit}
+                  onChange={(e) =>
+                    setCoverageUnit(e.target.value as CoverageUnit | "")
+                  }
+                >
+                  <option value="">No coverage unit</option>
+                  {COVERAGE_UNITS.map((u) => (
+                    <option key={u} value={u}>
+                      {u}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {error && (
@@ -352,6 +409,8 @@ function MaterialRow({
   const [vSize, setVSize] = useState("");
   const [vUnit, setVUnit] = useState("");
   const [vPrice, setVPrice] = useState("");
+  const [vCoverageValue, setVCoverageValue] = useState("");
+  const [vCoverageUnit, setVCoverageUnit] = useState<CoverageUnit | "">("");
 
   const [vBusy, setVBusy] =
     useState(false);
@@ -392,6 +451,11 @@ function MaterialRow({
             size: vSize,
             unit: vUnit || undefined,
             price: priceNum,
+            coverage_value:
+              vCoverageUnit && vCoverageValue
+                ? parseFloat(vCoverageValue) || undefined
+                : undefined,
+            coverage_unit: vCoverageUnit || undefined,
           }
         );
 
@@ -400,6 +464,8 @@ function MaterialRow({
       setVSize("");
       setVUnit("");
       setVPrice("");
+      setVCoverageValue("");
+      setVCoverageUnit("");
 
       setAddingVariant(false);
     } finally {
@@ -438,6 +504,33 @@ function MaterialRow({
         material.id,
         variantId
       );
+
+    onChange(updated);
+  }
+
+  async function handleSetCoverage(variantId: number) {
+    const value = window.prompt(
+      `Coverage amount (e.g. 32 for a sheet that covers 32 sqft)`
+    );
+    if (!value) return;
+    const num = parseFloat(value);
+    if (isNaN(num) || num <= 0) {
+      alert("Enter a positive number.");
+      return;
+    }
+
+    const unitChoice = window.prompt(
+      `Coverage unit — one of: ${COVERAGE_UNITS.join(", ")}`
+    );
+    if (!unitChoice || !COVERAGE_UNITS.includes(unitChoice as CoverageUnit)) {
+      alert(`Unit must be one of: ${COVERAGE_UNITS.join(", ")}`);
+      return;
+    }
+
+    const updated = await updateMaterialVariant(material.id, variantId, {
+      coverage_value: num,
+      coverage_unit: unitChoice as CoverageUnit,
+    });
 
     onChange(updated);
   }
@@ -520,6 +613,21 @@ function MaterialRow({
                     <p className="label-mono">
                       {variant.unit}
                     </p>
+                  )}
+
+                  {variant.coverage_value && variant.coverage_unit ? (
+                    <p className="label-mono" style={{ color: "var(--paper-dim)" }}>
+                      covers {variant.coverage_value} {variant.coverage_unit}
+                    </p>
+                  ) : (
+                    <button
+                      type="button"
+                      className="label-mono"
+                      style={{ color: "var(--red)" }}
+                      onClick={() => handleSetCoverage(variant.id)}
+                    >
+                      no coverage set — click to add (skipped by auto-estimates until then)
+                    </button>
                   )}
                 </div>
 
@@ -604,54 +712,85 @@ function MaterialRow({
           {addingVariant ? (
             <form
               onSubmit={handleAddVariant}
-              className="mt-3 grid grid-cols-3 gap-2"
+              className="mt-3 flex flex-col gap-2"
             >
-              <input
-                className="field"
-                placeholder="Size"
-                value={vSize}
-                onChange={(e) =>
-                  setVSize(
-                    e.target.value
-                  )
-                }
-                required
-              />
-
-              <input
-                className="field"
-                placeholder="Unit"
-                value={vUnit}
-                onChange={(e) =>
-                  setVUnit(
-                    e.target.value
-                  )
-                }
-              />
-
-              <div className="flex gap-1">
+              <div className="grid grid-cols-3 gap-2">
                 <input
                   className="field"
-                  placeholder="Price"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={vPrice}
+                  placeholder="Size"
+                  value={vSize}
                   onChange={(e) =>
-                    setVPrice(
+                    setVSize(
                       e.target.value
                     )
                   }
                   required
                 />
 
-                <button
-                  type="submit"
-                  disabled={vBusy}
-                  className="btn-primary px-3"
+                <input
+                  className="field"
+                  placeholder="Unit"
+                  value={vUnit}
+                  onChange={(e) =>
+                    setVUnit(
+                      e.target.value
+                    )
+                  }
+                />
+
+                <div className="flex gap-1">
+                  <input
+                    className="field"
+                    placeholder="Price"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={vPrice}
+                    onChange={(e) =>
+                      setVPrice(
+                        e.target.value
+                      )
+                    }
+                    required
+                  />
+
+                  <button
+                    type="submit"
+                    disabled={vBusy}
+                    className="btn-primary px-3"
+                  >
+                    {vBusy ? "…" : "Add"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  className="field"
+                  placeholder="Coverage amount, e.g. 32"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={vCoverageValue}
+                  onChange={(e) =>
+                    setVCoverageValue(e.target.value)
+                  }
+                />
+
+                <select
+                  className="field"
+                  value={vCoverageUnit}
+                  onChange={(e) =>
+                    setVCoverageUnit(e.target.value as CoverageUnit | "")
+                  }
                 >
-                  {vBusy ? "…" : "Add"}
-                </button>
+                  <option value="">No coverage unit</option>
+                  {COVERAGE_UNITS.map((u) => (
+                    <option key={u} value={u}>
+                      {u}
+                    </option>
+                  ))}
+                </select>
               </div>
             </form>
           ) : (

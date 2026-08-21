@@ -241,9 +241,7 @@ class SheetOut(BaseModel):
     @computed_field
     @property
     def url(self) -> str:
-        filename = os.path.basename(self.file_path)
-        expires, signature = sign_file_path(filename)
-        return f"/files/{filename}?expires={expires}&signature={signature}"
+        return f"/static/uploads/{os.path.basename(self.file_path)}"
 
 
 # ---- Pins ----
@@ -346,9 +344,7 @@ class AttachmentOut(BaseModel):
     @computed_field
     @property
     def url(self) -> str:
-        filename = os.path.basename(self.file_path)
-        expires, signature = sign_file_path(filename, self.uploaded_by_id)
-        return f"/files/{filename}?user_id={self.uploaded_by_id}&expires={expires}&signature={signature}"
+        return f"/static/uploads/{os.path.basename(self.file_path)}"
 
     @computed_field
     @property
@@ -399,7 +395,7 @@ class CommentOut(BaseModel):
     author_id: int
     body: str
     created_at: datetime
-    author: UserBrief
+    author: UserOut
     attachments: list[AttachmentOut] = Field(default_factory=list)
 
     class Config:
@@ -494,7 +490,7 @@ class ChannelMessageOut(BaseModel):
     body: str
     task_id: int | None = None
     created_at: datetime
-    sender: UserBrief
+    sender: UserOut
     attachments: list[AttachmentOut] = Field(default_factory=list)
 
     class Config:
@@ -540,11 +536,22 @@ class ChannelMuteOut(BaseModel):
 
 
 # ---- Materials ----
+_COVERAGE_UNITS = {"sqft", "linear_ft", "cuft", "cuyd", "gallon", "square", "each"}
+
+
+def _validate_coverage_unit(v: str | None) -> str | None:
+    if v is not None and v not in _COVERAGE_UNITS:
+        raise ValueError(f"coverage_unit must be one of: {', '.join(sorted(_COVERAGE_UNITS))}")
+    return v
+
+
 class MaterialVariantCreate(BaseModel):
     size: str = Field(min_length=1, max_length=100)
     unit: str | None = Field(default=None, max_length=50)
     price: float = Field(ge=0, le=_MAX_PRICE)
     sku: str | None = Field(default=None, max_length=100)
+    coverage_value: float | None = Field(default=None, gt=0)
+    coverage_unit: str | None = Field(default=None, max_length=50)
 
     @field_validator("size")
     @classmethod
@@ -556,17 +563,29 @@ class MaterialVariantCreate(BaseModel):
     def _optional_variant_strings_not_blank(cls, v: str | None) -> str | None:
         return _validate_optional_non_blank(v)
 
+    @field_validator("coverage_unit")
+    @classmethod
+    def _coverage_unit_valid(cls, v: str | None) -> str | None:
+        return _validate_coverage_unit(v)
+
 
 class MaterialVariantUpdate(BaseModel):
     size: str | None = Field(default=None, min_length=1, max_length=100)
     unit: str | None = Field(default=None, min_length=1, max_length=50)
     price: float | None = Field(default=None, ge=0, le=_MAX_PRICE)
     sku: str | None = Field(default=None, min_length=1, max_length=100)
+    coverage_value: float | None = Field(default=None, gt=0)
+    coverage_unit: str | None = Field(default=None, max_length=50)
 
     @field_validator("size", "unit", "sku")
     @classmethod
     def _optional_variant_strings_not_blank(cls, v: str | None) -> str | None:
         return _validate_optional_non_blank(v)
+
+    @field_validator("coverage_unit")
+    @classmethod
+    def _coverage_unit_valid(cls, v: str | None) -> str | None:
+        return _validate_coverage_unit(v)
 
 
 class MaterialVariantOut(BaseModel):
@@ -576,6 +595,8 @@ class MaterialVariantOut(BaseModel):
     unit: str | None
     price: float
     sku: str | None
+    coverage_value: float | None
+    coverage_unit: str | None
     updated_at: datetime
 
     class Config:
@@ -919,7 +940,7 @@ class TaskOut(BaseModel):
     status: TaskStatus
     priority: PinPriority
     owner_id: int | None
-    owner: UserBrief | None
+    owner: UserOut | None
     due_date: datetime | None
     created_by_id: int
     created_at: datetime

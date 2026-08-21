@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
@@ -36,8 +36,8 @@ def _get_own_material(db: Session, material_id: int, user: User) -> Material:
 
 @router.get("", response_model=list[MaterialOut])
 def list_materials(
-    q: str | None = Query(default=None, max_length=200),
-    category: str | None = Query(default=None, max_length=100),
+    q: str | None = None,
+    category: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -62,7 +62,16 @@ def create_material(payload: MaterialCreate, db: Session = Depends(get_db), user
         created_by_id=user.id,
     )
     for v in payload.variants:
-        material.variants.append(MaterialVariant(size=v.size, unit=v.unit, price=v.price, sku=v.sku))
+        material.variants.append(
+            MaterialVariant(
+                size=v.size,
+                unit=v.unit,
+                price=v.price,
+                sku=v.sku,
+                coverage_value=v.coverage_value,
+                coverage_unit=v.coverage_unit,
+            )
+        )
     db.add(material)
     db.commit()
     db.refresh(material)
@@ -104,7 +113,16 @@ def add_variant(
     user: User = Depends(get_current_user),
 ):
     material = _get_own_material(db, material_id, user)
-    material.variants.append(MaterialVariant(size=payload.size, unit=payload.unit, price=payload.price, sku=payload.sku))
+    material.variants.append(
+        MaterialVariant(
+            size=payload.size,
+            unit=payload.unit,
+            price=payload.price,
+            sku=payload.sku,
+            coverage_value=payload.coverage_value,
+            coverage_unit=payload.coverage_unit,
+        )
+    )
     db.commit()
     db.refresh(material)
     return material
