@@ -38,7 +38,7 @@ export default function ProjectDetailPage() {
   const projectId = Number(params.id);
   const searchParams = useSearchParams();
 
-  const VALID_TABS = ["dashboard", "sheets", "pins", "tasks", "costs", "chat", "activity"] as const;
+  const VALID_TABS = ["dashboard", "sheets", "pins", "tasks", "logs", "costs", "chat", "activity"] as const;
   type TabKey = (typeof VALID_TABS)[number];
   const tabParam = searchParams.get("tab");
   const initialTab: TabKey = (VALID_TABS as readonly string[]).includes(tabParam ?? "")

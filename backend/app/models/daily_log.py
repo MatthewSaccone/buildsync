@@ -36,3 +36,4 @@ class DailyLog(Base):
 
     project = relationship("Project", back_populates="daily_logs")
     created_by = relationship("User", foreign_keys=[created_by_id])
+    attachments = relationship("Attachment", back_populates="daily_log", cascade="all, delete-orphan")

@@ -3,18 +3,19 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-type TabKey = "dashboard" | "sheets" | "pins" | "tasks" | "costs" | "chat";
+type TabKey = "dashboard" | "sheets" | "pins" | "tasks" | "logs" | "costs" | "chat";
 
 const TAB_LABELS: Record<TabKey, string> = {
   sheets: "Sheets",
   dashboard: "Dashboard",
   pins: "Pins",
   tasks: "Tasks",
+  logs: "Logs",
   costs: "Costs",
   chat: "Chat",
 };
 
-const TAB_ORDER: TabKey[] = ["dashboard", "sheets", "pins", "tasks", "costs", "chat"];
+const TAB_ORDER: TabKey[] = ["dashboard", "sheets", "pins", "tasks", "logs", "costs", "chat"];
 
 interface ProjectTabsProps {
   projectId?: number;
@@ -62,6 +63,7 @@ export default function ProjectTabs({ projectId, activeTab, onChange }: ProjectT
     { href: `/projects/${projectId}`, label: TAB_LABELS.sheets, exact: true },
     { href: `/projects/${projectId}/pins`, label: TAB_LABELS.pins },
     { href: `/projects/${projectId}/tasks`, label: TAB_LABELS.tasks },
+    { href: `/projects/${projectId}/logs`, label: TAB_LABELS.logs },
     { href: `/projects/${projectId}/costs`, label: TAB_LABELS.costs },
     { href: `/projects/${projectId}/chat`, label: TAB_LABELS.chat },
   ];

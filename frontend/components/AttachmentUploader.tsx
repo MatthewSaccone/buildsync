@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { uploadAttachment } from "@/lib/api";
+import { uploadAttachment, uploadDailyLogAttachment } from "@/lib/api";
 
 interface Props {
   pinId?: number;
   taskId?: number;
   commentId?: number;
+  dailyLogId?: number;
   onUploaded?: (attachment: any) => void;
 }
 
@@ -14,6 +15,7 @@ export function AttachmentUploader({
   pinId,
   taskId,
   commentId,
+  dailyLogId,
   onUploaded,
 }: Props) {
   const [uploading, setUploading] = useState(false);
@@ -30,12 +32,9 @@ export function AttachmentUploader({
     setError(null);
 
     try {
-      const result = await uploadAttachment(
-        file,
-        pinId,
-        commentId,
-        taskId
-      );
+      const result = dailyLogId
+        ? await uploadDailyLogAttachment(dailyLogId, file)
+        : await uploadAttachment(file, pinId, commentId, taskId);
 
       onUploaded?.(result);
     } catch (err: any) {

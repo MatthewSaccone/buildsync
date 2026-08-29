@@ -328,6 +328,9 @@ class AttachmentOut(BaseModel):
     comment_id: int | None
     message_id: int | None = None
     channel_message_id: int | None = None
+    daily_log_id: int | None = None
+    source_attachment_id: int | None = None
+    annotations: str | None = None
     file_path: str
     original_filename: str | None = None
     content_type: str | None = None
@@ -347,6 +350,27 @@ class AttachmentOut(BaseModel):
     def is_image(self) -> bool:
         ext = os.path.splitext(self.file_path)[1].lower()
         return ext in {".png", ".jpg", ".jpeg", ".webp"}
+
+
+class AttachmentAnnotationsUpdate(BaseModel):
+    """Freehand annotation overlay for a photo, sent as a JSON string (list
+    of strokes/shapes) produced by the annotation canvas on the frontend."""
+
+    annotations: str = Field(max_length=200_000)
+
+
+class AttachmentAttachRequest(BaseModel):
+    """Copies an existing attachment (e.g. a daily log photo) onto a task or
+    pin. Exactly one of task_id/pin_id must be set."""
+
+    task_id: int | None = None
+    pin_id: int | None = None
+
+    @model_validator(mode="after")
+    def exactly_one_target(self):
+        if bool(self.task_id) == bool(self.pin_id):
+            raise ValueError("Exactly one of task_id or pin_id must be set")
+        return self
 
 
 class PinOut(BaseModel):

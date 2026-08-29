@@ -232,6 +232,9 @@ export interface Attachment {
   comment_id: number | null;
   message_id: number | null;
   channel_message_id: number | null;
+  daily_log_id: number | null;
+  source_attachment_id: number | null;
+  annotations: string | null;
   file_path: string;
   original_filename: string | null;
   content_type: string | null;
@@ -1250,6 +1253,54 @@ export async function deleteAttachment(attachmentId: number | string): Promise<v
   await fetchWithAuth(`${API_URL}/attachments/${attachmentId}`, { method: "DELETE" });
 }
 
+/** Upload a progress photo to a daily log (BS-302-1). */
+export async function uploadDailyLogAttachment(dailyLogId: number | string, file: File): Promise<Attachment> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetchWithAuth(`${API_URL}/daily-logs/${dailyLogId}/attachments`, {
+    method: "POST",
+    body: formData,
+  });
+  return res.json();
+}
+
+export async function listDailyLogAttachments(dailyLogId: number | string): Promise<Attachment[]> {
+  const res = await fetchWithAuth(`${API_URL}/daily-logs/${dailyLogId}/attachments`);
+  return res.json();
+}
+
+/** Saves a freehand annotation overlay for a photo (BS-302-2). `annotations`
+ * is a JSON string (e.g. an array of strokes/shapes from the annotation
+ * canvas) — the original image on disk is never modified. */
+export async function saveAttachmentAnnotations(
+  attachmentId: number | string,
+  annotations: string
+): Promise<Attachment> {
+  const res = await fetchWithAuth(`${API_URL}/attachments/${attachmentId}/annotations`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ annotations }),
+  });
+  return res.json();
+}
+
+/** Attaches an existing photo (e.g. a daily log progress photo) onto a task
+ * (BS-302-3) or a pin (BS-302-4). Exactly one of taskId/pinId must be set. */
+export async function attachExistingAttachment(
+  attachmentId: number | string,
+  target: { taskId?: number | string; pinId?: number | string }
+): Promise<Attachment> {
+  const res = await fetchWithAuth(`${API_URL}/attachments/${attachmentId}/attach`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      task_id: target.taskId ?? null,
+      pin_id: target.pinId ?? null,
+    }),
+  });
+  return res.json();
+}
+
 /** Upload a file to a DM (BS-103). The message must already exist — send
  * the text (can be empty) first, then attach the file to the returned id. */
 export async function uploadMessageAttachment(messageId: number | string, file: File): Promise<Attachment> {
@@ -1755,4 +1806,78 @@ export async function overrideEstimateLine(
   });
   if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null));
   return res.json();
+}
+
+// ==========================================
+// Daily Logs API (BS-301 / BS-302)
+// ==========================================
+
+export interface DailyLog {
+  id: number;
+  project_id: number;
+  log_date: string;
+  weather: string | null;
+  crew: string | null;
+  hours_worked: number | null;
+  completed_work: string | null;
+  delays: string | null;
+  visitors: string | null;
+  safety_notes: string | null;
+  created_by: User;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DailyLogInput {
+  log_date: string;
+  weather?: string | null;
+  crew?: string | null;
+  hours_worked?: number | null;
+  completed_work?: string | null;
+  delays?: string | null;
+  visitors?: string | null;
+  safety_notes?: string | null;
+}
+
+export async function listDailyLogs(
+  projectId: number | string,
+  range?: { startDate?: string; endDate?: string }
+): Promise<DailyLog[]> {
+  const params = new URLSearchParams();
+  if (range?.startDate) params.set("start_date", range.startDate);
+  if (range?.endDate) params.set("end_date", range.endDate);
+  const qs = params.toString();
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/daily-logs${qs ? `?${qs}` : ""}`);
+  return res.json();
+}
+
+export async function getDailyLog(projectId: number | string, logId: number | string): Promise<DailyLog> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/daily-logs/${logId}`);
+  return res.json();
+}
+
+export async function createDailyLog(projectId: number | string, data: DailyLogInput): Promise<DailyLog> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/daily-logs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function updateDailyLog(
+  projectId: number | string,
+  logId: number | string,
+  data: Partial<DailyLogInput>
+): Promise<DailyLog> {
+  const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/daily-logs/${logId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function deleteDailyLog(projectId: number | string, logId: number | string): Promise<void> {
+  await fetchWithAuth(`${API_URL}/projects/${projectId}/daily-logs/${logId}`, { method: "DELETE" });
 }

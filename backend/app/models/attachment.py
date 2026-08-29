@@ -1,14 +1,15 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import String, DateTime, ForeignKey
+from sqlalchemy import String, DateTime, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
 
 class Attachment(Base):
-    """A photo or file attached to a pin, a task, a comment, a DM, or a channel
-    message. Exactly one of pin_id/task_id/comment_id/message_id/channel_message_id is set."""
+    """A photo or file attached to a pin, a task, a comment, a DM, a channel
+    message, or a daily log. Exactly one of
+    pin_id/task_id/comment_id/message_id/channel_message_id/daily_log_id is set."""
 
     __tablename__ = "attachments"
 
@@ -20,6 +21,18 @@ class Attachment(Base):
     channel_message_id: Mapped[int | None] = mapped_column(
         ForeignKey("channel_messages.id"), nullable=True, index=True
     )
+    daily_log_id: Mapped[int | None] = mapped_column(ForeignKey("daily_logs.id"), nullable=True, index=True)
+    # When this attachment was created by "attaching" an existing photo
+    # (e.g. a daily log progress photo) onto a task or pin, this points back
+    # at the original attachment it was copied from. NULL for attachments
+    # uploaded directly.
+    source_attachment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("attachments.id"), nullable=True, index=True
+    )
+    # Freehand annotation overlay data (JSON-encoded list of strokes/shapes
+    # drawn on top of the photo), stored alongside the original file so the
+    # unannotated image is never lost.
+    annotations: Mapped[str | None] = mapped_column(Text, nullable=True)
     file_path: Mapped[str] = mapped_column(String(500), nullable=False)
     # Original client-side filename + MIME type, kept separately from the
     # randomized on-disk name so downloads can offer a sensible filename and
@@ -39,4 +52,6 @@ class Attachment(Base):
     comment = relationship("Comment", back_populates="attachments")
     message = relationship("DirectMessage", back_populates="attachments")
     channel_message = relationship("ChannelMessage", back_populates="attachments")
+    daily_log = relationship("DailyLog", back_populates="attachments")
+    source_attachment = relationship("Attachment", remote_side=[id])
     uploaded_by = relationship("User")

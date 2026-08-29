@@ -17,13 +17,14 @@ from app.core.uploads import (
 from app.models.attachment import Attachment
 from app.models.channel import Channel, ChannelMessage
 from app.models.comment import Comment
+from app.models.daily_log import DailyLog
 from app.models.message import DirectMessage
 from app.models.pin import Pin
 from app.models.project import ProjectMember
 from app.models.sheet import Sheet
 from app.models.task import Task
 from app.models.user import User
-from app.schemas.schemas import AttachmentOut
+from app.schemas.schemas import AttachmentOut, AttachmentAnnotationsUpdate, AttachmentAttachRequest
 
 router = APIRouter(tags=["attachments"])
 logger = logging.getLogger(__name__)
@@ -67,6 +68,20 @@ def _require_comment_membership(db: Session, comment_id: int, user_id: int) -> C
     else:
         _require_task_membership(db, comment.task_id, user_id)
     return comment
+
+
+def _require_daily_log_membership(db: Session, daily_log_id: int, user_id: int) -> DailyLog:
+    log = db.get(DailyLog, daily_log_id)
+    if not log:
+        raise HTTPException(status_code=404, detail="Daily log not found")
+    membership = (
+        db.query(ProjectMember)
+        .filter(ProjectMember.project_id == log.project_id, ProjectMember.user_id == user_id)
+        .first()
+    )
+    if not membership:
+        raise HTTPException(status_code=403, detail="Not a member of this project")
+    return log
 
 
 def _require_message_membership(db: Session, message_id: int, user_id: int) -> DirectMessage:
@@ -151,6 +166,44 @@ def upload_task_attachment(
 def list_task_attachments(task_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     _require_task_membership(db, task_id, user.id)
     return db.query(Attachment).filter(Attachment.task_id == task_id).order_by(Attachment.uploaded_at).all()
+
+
+@router.post("/daily-logs/{daily_log_id}/attachments", response_model=AttachmentOut)
+def upload_daily_log_attachment(
+    daily_log_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Upload a progress photo to a daily log (BS-302-1)."""
+    _require_daily_log_membership(db, daily_log_id, user.id)
+    stored_path, original_name, content_type, content_hash = save_upload_with_metadata(file, IMAGE_EXTENSIONS)
+
+    attachment = Attachment(
+        daily_log_id=daily_log_id,
+        file_path=stored_path,
+        original_filename=original_name,
+        content_type=content_type,
+        content_hash=content_hash,
+        uploaded_by_id=user.id,
+    )
+    db.add(attachment)
+    db.commit()
+    db.refresh(attachment)
+    return attachment
+
+
+@router.get("/daily-logs/{daily_log_id}/attachments", response_model=list[AttachmentOut])
+def list_daily_log_attachments(
+    daily_log_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    _require_daily_log_membership(db, daily_log_id, user.id)
+    return (
+        db.query(Attachment)
+        .filter(Attachment.daily_log_id == daily_log_id)
+        .order_by(Attachment.uploaded_at)
+        .all()
+    )
 
 
 @router.post("/comments/{comment_id}/attachments", response_model=AttachmentOut)
@@ -265,6 +318,8 @@ def _require_attachment_access(db: Session, attachment: Attachment, user_id: int
         _require_comment_membership(db, attachment.comment_id, user_id)
     elif attachment.message_id:
         _require_message_membership(db, attachment.message_id, user_id)
+    elif attachment.daily_log_id:
+        _require_daily_log_membership(db, attachment.daily_log_id, user_id)
     else:
         _require_channel_message_membership(db, attachment.channel_message_id, user_id)
 
@@ -322,3 +377,63 @@ def delete_attachment(attachment_id: int, db: Session = Depends(get_db), user: U
 
     db.delete(attachment)
     db.commit()
+
+
+@router.put("/attachments/{attachment_id}/annotations", response_model=AttachmentOut)
+def update_attachment_annotations(
+    attachment_id: int,
+    payload: AttachmentAnnotationsUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Saves a freehand annotation overlay for a photo (BS-302-2). The
+    original image on disk is never modified -- annotations are stored
+    separately as JSON and re-rendered on top of the photo client-side."""
+    attachment = db.get(Attachment, attachment_id)
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    _require_attachment_access(db, attachment, user.id)
+
+    attachment.annotations = payload.annotations
+    db.commit()
+    db.refresh(attachment)
+    return attachment
+
+
+@router.post("/attachments/{attachment_id}/attach", response_model=AttachmentOut)
+def attach_existing_attachment(
+    attachment_id: int,
+    payload: AttachmentAttachRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Attaches an existing photo (e.g. a daily log progress photo) to a
+    task (BS-302-3) or a pin (BS-302-4). This creates a new Attachment row
+    that points at the same file on disk rather than moving/duplicating the
+    original, so the photo keeps showing up wherever it was uploaded plus
+    wherever it's since been attached."""
+    source = db.get(Attachment, attachment_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    _require_attachment_access(db, source, user.id)
+
+    if payload.task_id is not None:
+        _require_task_membership(db, payload.task_id, user.id)
+    else:
+        _require_pin_membership(db, payload.pin_id, user.id)
+
+    copy = Attachment(
+        pin_id=payload.pin_id,
+        task_id=payload.task_id,
+        file_path=source.file_path,
+        original_filename=source.original_filename,
+        content_type=source.content_type,
+        content_hash=source.content_hash,
+        annotations=source.annotations,
+        source_attachment_id=source.id,
+        uploaded_by_id=user.id,
+    )
+    db.add(copy)
+    db.commit()
+    db.refresh(copy)
+    return copy

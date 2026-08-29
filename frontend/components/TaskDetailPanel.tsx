@@ -23,6 +23,7 @@ import {
   type TaskMaterial,
 } from "@/lib/api";
 import { AttachmentUploader } from "./AttachmentUploader";
+import { PhotoGrid } from "./PhotoGrid";
 import { TaskStatusBadge, PriorityBadge, TASK_STATUS_META, PRIORITY_META } from "./TaskBadges";
 
 interface Props {
@@ -452,19 +453,14 @@ export default function TaskDetailPanel({ task, projectId, members, onClose, onU
           <div>
             <label className="label-mono mb-1 block">Photos & attachments</label>
             {attachments.length > 0 && (
-              <div className="mb-2 grid grid-cols-3 gap-2">
-                {attachments.map((a) => (
-                  <a
-                    key={a.id}
-                    href={a.file_path}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="block overflow-hidden rounded"
-                    style={{ border: "1px solid var(--line-soft)", aspectRatio: "1" }}
-                  >
-                    <img src={a.file_path} alt="" className="h-full w-full object-cover" />
-                  </a>
-                ))}
+              <div className="mb-2">
+                <PhotoGrid
+                  projectId={projectId}
+                  attachments={attachments}
+                  onUpdated={(updated) =>
+                    setAttachments((prev) => prev.map((a) => (a.id === updated.id ? updated : a)))
+                  }
+                />
               </div>
             )}
             <AttachmentUploader
