@@ -15,6 +15,7 @@ from app.core.database import Base, engine
 from app.core.limiter import limiter
 from app.routers import auth, projects, sheets, pins, comments, notifications, websocket, materials, pin_materials, costs, attachments, messages, schedule, tasks, task_materials, channels, estimates, files
 import app.models  # noqa: F401 ensures all models are registered before create_all
+from app.routers import daily_logs
 
 os.makedirs(settings.upload_dir, exist_ok=True)
 
@@ -78,6 +79,7 @@ app.include_router(tasks.task_comments_router)
 app.include_router(task_materials.router)
 app.include_router(estimates.router)
 app.include_router(files.router)
+app.include_router(daily_logs.router)
 
 
 @app.get("/health")

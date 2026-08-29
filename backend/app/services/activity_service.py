@@ -17,6 +17,7 @@ class ActivityKind:
     SHEET_UPLOADED = "sheet_uploaded"
     CHAT_MESSAGE = "chat_message"
     MEMBER_JOINED = "member_joined"
+    DAILY_LOG_CREATED = "daily_log_created"
 
 
 async def log_activity(

@@ -6,6 +6,7 @@ from pydantic import BaseModel, EmailStr, Field, computed_field, field_validator
 
 from app.models.enums import UserRole, PinStatus, PinPriority, ProjectRole, JobStatus, TaskStatus
 from app.core.file_signing import sign_file_path
+from datetime import datetime, timezone, date
 
 
 # Shared password policy: min 10 chars, at least one letter and one digit.
@@ -1071,3 +1072,51 @@ class EstimateSessionOut(BaseModel):
 
 class EstimateLineOverride(BaseModel):
     material_variant_id: int = Field(gt=0, le=_MAX_ID)
+
+
+# ---- Daily Logs (BS-301) ----
+class DailyLogCreate(BaseModel):
+    log_date: date
+    weather: str | None = Field(default=None, max_length=255)
+    crew: str | None = Field(default=None, max_length=5000)
+    hours_worked: float | None = Field(default=None, ge=0, le=24)
+    completed_work: str | None = Field(default=None, max_length=5000)
+    delays: str | None = Field(default=None, max_length=5000)
+    visitors: str | None = Field(default=None, max_length=5000)
+    safety_notes: str | None = Field(default=None, max_length=5000)
+
+    @field_validator("weather", "crew", "completed_work", "delays", "visitors", "safety_notes")
+    @classmethod
+    def not_blank_if_provided(cls, v):
+        if v is not None and not v.strip():
+            raise ValueError("must not be blank")
+        return v
+
+
+class DailyLogUpdate(BaseModel):
+    weather: str | None = Field(default=None, max_length=255)
+    crew: str | None = Field(default=None, max_length=5000)
+    hours_worked: float | None = Field(default=None, ge=0, le=24)
+    completed_work: str | None = Field(default=None, max_length=5000)
+    delays: str | None = Field(default=None, max_length=5000)
+    visitors: str | None = Field(default=None, max_length=5000)
+    safety_notes: str | None = Field(default=None, max_length=5000)
+
+
+class DailyLogOut(BaseModel):
+    id: int
+    project_id: int
+    log_date: date
+    weather: str | None
+    crew: str | None
+    hours_worked: float | None
+    completed_work: str | None
+    delays: str | None
+    visitors: str | None
+    safety_notes: str | None
+    created_by: UserBrief
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

@@ -22,6 +22,7 @@ class Project(Base):
     sheets = relationship("Sheet", back_populates="project", cascade="all, delete-orphan")
     scheduled_jobs = relationship("ScheduledJob", back_populates="project", cascade="all, delete-orphan")
     tasks = relationship("Task", back_populates="project", cascade="all, delete-orphan")
+    daily_logs = relationship("DailyLog", back_populates="project", cascade="all, delete-orphan")
 
 
 class ProjectMember(Base):
