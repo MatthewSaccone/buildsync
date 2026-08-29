@@ -14,7 +14,7 @@ import {
   type Project,
   type DashboardData,
   type OverduePin,
-  type ActivityItem,
+  type ActivityEvent,
 } from "@/lib/api";
 
 function timeAgo(iso: string): string {
@@ -35,9 +35,15 @@ interface OverdueWithProject extends OverduePin {
   projectName: string;
 }
 
-interface ActivityWithProject extends ActivityItem {
+interface ActivityWithProject extends ActivityEvent {
   projectId: number;
   projectName: string;
+}
+
+function getActivitySheetId(activity: ActivityWithProject): number | null {
+  const sheetId = activity.extra?.sheet_id;
+
+  return typeof sheetId === "number" ? sheetId : null;
 }
 
 export default function DashboardPage() {
@@ -202,21 +208,29 @@ export default function DashboardPage() {
                     Nothing yet.
                   </p>
                 ) : (
-                  recentActivity.map((a, i) => (
-                    <Link
-                      key={i}
-                      href={`/projects/${a.projectId}/sheets/${a.sheet_id}`}
-                      className="flex items-center justify-between rounded-sm px-2 py-1.5 text-sm hover:opacity-80"
-                    >
-                      <span className="flex flex-col">
-                        <span>{a.message}</span>
-                        <span className="label-mono" style={{ color: "var(--paper-dim)" }}>
-                          {a.projectName}
+                  recentActivity.map((a, i) => {
+                    const sheetId = getActivitySheetId(a);
+
+                    return (
+                      <Link
+                        key={i}
+                        href={
+                          sheetId
+                            ? `/projects/${a.projectId}/sheets/${sheetId}`
+                            : `/projects/${a.projectId}`
+                        }
+                        className="flex items-center justify-between rounded-sm px-2 py-1.5 text-sm hover:opacity-80"
+                      >
+                        <span className="flex flex-col">
+                          <span>{a.message}</span>
+                          <span className="label-mono" style={{ color: "var(--paper-dim)" }}>
+                            {a.projectName}
+                          </span>
                         </span>
-                      </span>
-                      <span className="label-mono">{timeAgo(a.created_at)}</span>
-                    </Link>
-                  ))
+                        <span className="label-mono">{timeAgo(a.created_at)}</span>
+                      </Link>
+                    );
+                  })
                 )}
               </div>
             </div>
