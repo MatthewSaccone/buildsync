@@ -585,11 +585,24 @@ export async function getDashboard(projectId: string | number): Promise<Dashboar
  * back in time. */
 export async function listActivity(
   projectId: string | number,
-  options?: { before?: string; limit?: number }
+  options?: {
+    before?: string;
+    limit?: number;
+    actorId?: number;
+    kind?: string;
+    startDate?: string;
+    endDate?: string;
+    q?: string;
+  }
 ): Promise<ActivityEvent[]> {
   const params = new URLSearchParams();
   if (options?.before) params.set("before", options.before);
   if (options?.limit) params.set("limit", String(options.limit));
+  if (options?.actorId) params.set("actor_id", String(options.actorId));
+  if (options?.kind) params.set("kind", options.kind);
+  if (options?.startDate) params.set("start_date", options.startDate);
+  if (options?.endDate) params.set("end_date", options.endDate);
+  if (options?.q) params.set("q", options.q);
   const qs = params.toString();
   const res = await fetchWithAuth(`${API_URL}/projects/${projectId}/activity${qs ? `?${qs}` : ""}`);
   return res.json();

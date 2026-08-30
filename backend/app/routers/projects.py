@@ -269,17 +269,42 @@ def list_activity(
     project_id: int,
     before: datetime | None = None,
     limit: int = 30,
+    actor_id: int | None = None,
+    kind: str | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    q: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Paginated project timeline (BS-201). Pass `before` (an ISO timestamp
-    from the oldest item you've already loaded) to page further back."""
+    """Paginated, filterable project timeline (BS-201/BS-202).
+
+    - `before`: ISO timestamp from the oldest item already loaded, for
+      "load more" pagination.
+    - `actor_id`: only events performed by this user (BS-202-1).
+    - `start_date` / `end_date`: only events created within this range,
+      inclusive (BS-202-2).
+    - `kind`: only events of this activity type, e.g. "pin_created"
+      (BS-202-3).
+    - `q`: case-insensitive substring match against the event message
+      (BS-202-4).
+    """
     _require_membership(db, project_id, user.id)
     limit = max(1, min(limit, 100))
 
     query = db.query(ActivityEvent).filter(ActivityEvent.project_id == project_id)
     if before:
         query = query.filter(ActivityEvent.created_at < before)
+    if actor_id is not None:
+        query = query.filter(ActivityEvent.actor_id == actor_id)
+    if kind:
+        query = query.filter(ActivityEvent.kind == kind)
+    if start_date is not None:
+        query = query.filter(ActivityEvent.created_at >= start_date)
+    if end_date is not None:
+        query = query.filter(ActivityEvent.created_at <= end_date)
+    if q and q.strip():
+        query = query.filter(ActivityEvent.message.ilike(f"%{q.strip()}%"))
 
     return query.order_by(ActivityEvent.created_at.desc()).limit(limit).all()
 
