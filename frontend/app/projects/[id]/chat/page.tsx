@@ -329,10 +329,10 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!user || !projectId) return;
-    const ws = connectProjectSocket(projectId, (event: any) => {
+    const ws = connectProjectSocket(projectId, (event) => {
       if (event.event !== "channel_message_created") return;
-      const msg: ChannelMessage = event.message;
-      const channelId: number = event.channel_id;
+      const msg = event.message as ChannelMessage;
+      const channelId = event.channel_id as number;
       const active = activeTargetRef.current;
       const isActive = active?.kind === "channel" && active.id === channelId;
 

@@ -8,7 +8,7 @@ export type AuthContextType = {
   user: User | null;
   loading: boolean;
   refreshUser: () => Promise<void>;
-  login: (...args: any[]) => Promise<void>;
+  login: typeof login;
   logout: () => void;
 };
 
@@ -16,17 +16,16 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  // Lazy initializer: if there's no token, we're not going to fetch anything,
+  // so "loading" should start false rather than being set to false via a
+  // setState call inside the effect below.
+  const [loading, setLoading] = useState<boolean>(() => !!getToken());
   const router = useRouter();
 
   const fetchCurrentUser = async () => {
-    const token = getToken();
-    if (!token) {
-      setUser(null);
-      setLoading(false);
-      return;
-    }
-
+    // No token: nothing to fetch. Callers (the mount effect, and
+    // refreshUser after login) are responsible for the no-token case so
+    // this function never needs to set state before its first `await`.
     try {
       const userData = await getMe();
       setUser(userData);
@@ -40,7 +39,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    fetchCurrentUser();
+    // Fetch-on-mount: a legitimate effect use per React's own docs. The
+    // lint rule flags this because fetchCurrentUser eventually calls
+    // setState, but it does so only after an await (or not at all, if
+    // there's no token) — not synchronously.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (getToken()) fetchCurrentUser();
   }, []);
 
   const logout = () => {

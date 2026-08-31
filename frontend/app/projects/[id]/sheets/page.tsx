@@ -85,7 +85,7 @@ export default function ProjectSheetsPage() {
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (err) {
-      setUploadError(err instanceof ApiError ? String(err.detail?.detail || err.message) : "Upload failed.");
+      setUploadError(err instanceof ApiError ? String((err.detail as Record<string, any>)?.detail || err.message) : "Upload failed.");
     } finally {
       setUploading(false);
     }

@@ -71,7 +71,6 @@ export default function MaterialsPage() {
         // Non-critical — the form just falls back to fully manual entry.
       });
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   // Auto-fill coverage when the category changes to one with exactly one
@@ -82,7 +81,12 @@ export default function MaterialsPage() {
     if (coverageTouched || !category) return;
     const matches = coverageDefaults.filter((d) => d.catalog_category === category);
     if (matches.length === 1) {
+      // coverageDefaults itself loads asynchronously and coverageValue/Unit
+      // stay independently user-editable afterward, so this can't be
+      // replaced with a render-time derivation or key reset.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCoverageValue(String(matches[0].coverage_value));
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCoverageUnit(matches[0].coverage_unit);
     }
   }, [category, coverageDefaults, coverageTouched]);

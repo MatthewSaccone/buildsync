@@ -4,9 +4,9 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000
 
 export class ApiError extends Error {
   status: number;
-  detail: any;
+  detail: unknown;
 
-  constructor(status: number, detail: any) {
+  constructor(status: number, detail: unknown) {
     const message = typeof detail === "string" ? detail : "API Request Failed";
     super(message);
     this.status = status;
@@ -216,7 +216,7 @@ export interface DashboardStats {
   open_pins?: number;
   resolved_pins?: number;
   recent_activity_count?: number;
-  [key: string]: any;
+  [key: string]: number | undefined;
 }
 
 export interface TokenPair {
@@ -1372,9 +1372,18 @@ export function attachmentUrl(attachment: Attachment | string): string {
   return `${API_URL}/static/uploads/${filename}`;
 }
 
+// The project socket carries several distinct event types (activity_created,
+// channel_message_created, presence_changed, etc.). Callers narrow on
+// `event` before reading type-specific fields, so this is intentionally an
+// open envelope rather than a fully-modeled union.
+export interface ProjectSocketMessage {
+  event: string;
+  [key: string]: unknown;
+}
+
 export function connectProjectSocket(
   projectId: string | number,
-  onMessage: (event: any) => void
+  onMessage: (event: ProjectSocketMessage) => void
 ): WebSocket | null {
   const token = getToken();
   if (!token) return null;
@@ -1751,7 +1760,7 @@ export interface EstimateSessionOut {
   scale_ratio: number | null;
   scale_confirmed: boolean;
   wall_height_ft: number;
-  extracted_dimensions: Record<string, any> | null;
+  extracted_dimensions: Record<string, unknown> | null;
   low_confidence_fields: string[] | null;
   created_at: string;
   finalized_at: string | null;

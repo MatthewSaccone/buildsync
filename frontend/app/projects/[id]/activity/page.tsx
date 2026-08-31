@@ -117,6 +117,9 @@ export default function ProjectActivityPage() {
   useEffect(() => {
     if (!user || !projectId) return;
     let cancelled = false;
+    // Loading-flag kickoff for the fetch started below; not derivable at
+    // render time since it depends on filtersKey changing.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFetching(true);
     listActivity(projectId, { limit: PAGE_SIZE, ...activeFilters })
       .then((items) => {
@@ -140,7 +143,7 @@ export default function ProjectActivityPage() {
     if (!user || !projectId) return;
     const ws = connectProjectSocket(projectId, (msg) => {
       if (msg.event === "activity_created" && msg.activity) {
-        const activity: ActivityEvent = msg.activity;
+        const activity = msg.activity as ActivityEvent;
         if (seenIds.current.has(activity.id)) return;
         if (activeFilters.kind && activity.kind !== activeFilters.kind) return;
         if (activeFilters.actorId && activity.actor_id !== activeFilters.actorId) return;

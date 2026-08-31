@@ -6,6 +6,13 @@ import { login, signup, ApiError, type UserRole } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import Script from "next/script";
 
+declare global {
+  interface Window {
+    onTurnstileVerified?: (token: string) => void;
+    turnstile?: { reset: () => void };
+  }
+}
+
 const ROLES: { value: UserRole; label: string }[] = [
   { value: "general_contractor", label: "General Contractor" },
   { value: "architect", label: "Architect" },
@@ -32,9 +39,9 @@ export default function LoginPage() {
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   useEffect(() => {
-    (window as any).onTurnstileVerified = (token: string) => setTurnstileToken(token);
+    window.onTurnstileVerified = (token: string) => setTurnstileToken(token);
     return () => {
-      delete (window as any).onTurnstileVerified;
+      delete window.onTurnstileVerified;
     };
   }, []);
 
@@ -43,7 +50,7 @@ export default function LoginPage() {
     // submission, the stale token must not be resubmitted. Reset the widget
     // so the user gets a fresh token before retrying.
     setTurnstileToken(null);
-    (window as any).turnstile?.reset();
+    window.turnstile?.reset();
   }
 
   async function handleSubmit(e: React.FormEvent) {

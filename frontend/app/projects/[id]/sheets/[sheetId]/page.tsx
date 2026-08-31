@@ -148,22 +148,25 @@ export default function SheetViewerPage() {
   useEffect(() => {
     if (!user || !projectId) return;
     const ws = connectProjectSocket(projectId, (msg) => {
-      if (msg.event === "pin_created" && msg.pin && msg.pin.sheet_id === sheetId) {
-        setPins((prev) => (prev.some((p) => p.id === msg.pin!.id) ? prev : [...prev, msg.pin!]));
+      const pin = msg.pin as Pin | undefined;
+      if (msg.event === "pin_created" && pin && pin.sheet_id === sheetId) {
+        setPins((prev) => (prev.some((p) => p.id === pin.id) ? prev : [...prev, pin]));
       }
-      if (msg.event === "pin_updated" && msg.pin && msg.pin.sheet_id === sheetId) {
-        setPins((prev) => prev.map((p) => (p.id === msg.pin!.id ? msg.pin! : p)));
+      if (msg.event === "pin_updated" && pin && pin.sheet_id === sheetId) {
+        setPins((prev) => prev.map((p) => (p.id === pin.id ? pin : p)));
       }
-      if (msg.event === "pin_deleted" && msg.pin_id) {
-        setPins((prev) => prev.filter((p) => p.id !== msg.pin_id));
-        setSelectedPinId((prev) => (prev === msg.pin_id ? null : prev));
+      if (msg.event === "pin_deleted" && (msg as unknown as { pin_id?: number }).pin_id) {
+        const pinId = (msg as unknown as { pin_id: number }).pin_id;
+        setPins((prev) => prev.filter((p) => p.id !== pinId));
+        setSelectedPinId((prev) => (prev === pinId ? null : prev));
       }
       if (msg.event === "comment_created" && msg.comment) {
+        const newComment = msg.comment as Comment;
         setComments((prev) => {
           if (prev.length === 0) return prev; // not viewing a thread
-          if (prev[0].pin_id !== msg.comment!.pin_id) return prev;
-          if (prev.some((c) => c.id === msg.comment!.id)) return prev;
-          return [...prev, msg.comment!];
+          if (prev[0].pin_id !== newComment.pin_id) return prev;
+          if (prev.some((c) => c.id === newComment.id)) return prev;
+          return [...prev, newComment];
         });
       }
     });
