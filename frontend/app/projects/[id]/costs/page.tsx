@@ -74,8 +74,9 @@ export default function ProjectCostsPage() {
       const session = await startEstimate(projectId, Number(selectedSheetId));
       setEstimates((prev) => [session, ...prev]);
       setOpenEstimate(session);
-    } catch (e: any) {
-      setError(e?.detail?.detail || "Could not start estimate from this drawing.");
+    } catch (e: unknown) {
+      const err = e as { detail?: { detail?: string } };
+      setError(err?.detail?.detail || "Could not start estimate from this drawing.");
     } finally {
       setStarting(false);
     }
@@ -230,8 +231,9 @@ function EstimateDetail({
         roof_area_sqft: Number(roofArea) || 0,
       });
       onUpdate(updated);
-    } catch (e: any) {
-      setError(e?.detail?.detail || "Could not generate the estimate.");
+    } catch (e: unknown) {
+      const err = e as { detail?: { detail?: string } };
+      setError(err?.detail?.detail || "Could not generate the estimate.");
     } finally {
       setConfirming(false);
     }
