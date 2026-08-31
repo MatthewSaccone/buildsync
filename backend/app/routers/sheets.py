@@ -75,8 +75,17 @@ async def upload_sheet(
         extra={"sheet_id": sheet.id},
     )
 
-    return SheetOut(**sheet.__dict__, url=build_file_url(sheet.file_path, user.id))
-
+    return SheetOut(
+        id=sheet.id,
+        project_id=sheet.project_id,
+        root_sheet_id=sheet.root_sheet_id,
+        title=sheet.title,
+        file_path=sheet.file_path,
+        version=sheet.version,
+        uploaded_by_id=sheet.uploaded_by_id,
+        uploaded_at=sheet.uploaded_at,
+        url=build_file_url(sheet.file_path, user.id),
+    )
 
 @router.get("/{sheet_id}/download")
 def download_sheet(
