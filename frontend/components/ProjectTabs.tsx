@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-type TabKey = "dashboard" | "sheets" | "pins" | "tasks" | "logs" | "costs" | "chat";
+export type TabKey = "dashboard" | "sheets" | "pins" | "tasks" | "logs" | "costs" | "chat" | "activity";
 
 const TAB_LABELS: Record<TabKey, string> = {
   sheets: "Sheets",
@@ -13,9 +13,10 @@ const TAB_LABELS: Record<TabKey, string> = {
   logs: "Logs",
   costs: "Costs",
   chat: "Chat",
+  activity: "Activity",
 };
 
-const TAB_ORDER: TabKey[] = ["dashboard", "sheets", "pins", "tasks", "logs", "costs", "chat"];
+const TAB_ORDER: TabKey[] = ["dashboard", "sheets", "pins", "tasks", "logs", "costs", "chat", "activity"];
 
 interface ProjectTabsProps {
   projectId?: number;
